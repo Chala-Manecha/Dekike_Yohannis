@@ -79,17 +79,17 @@ export async function action({ request, context }: Route.ActionArgs) {
         .set({ status: "confirmed", telegramId: String(cb.from.id), name: telegramName(cb.from), username: cb.from.username ?? null })
         .where(and(eq(schema.botLogins.code, code), eq(schema.botLogins.status, "pending")));
     }
-    // Replace the button with the result so it can't be tapped again
-    if (cb.message) {
-      context.cloudflare.ctx.waitUntil(
-        fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/editMessageText`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: cb.message.chat.id, message_id: cb.message.message_id, text: valid ? SIGNED_IN_TEXT : EXPIRED_TEXT }),
-        }).catch(() => {}),
-      );
-    }
-    return reply({ method: "answerCallbackQuery", callback_query_id: cb.id });
+    // Replace the button with the result (sent in the reply, so it works even without
+    // the bot token), and stop the button's loading spinner with a short notice.
+    context.cloudflare.ctx.waitUntil(
+      fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callback_query_id: cb.id, text: valid ? "✅" : "⌛" }),
+      }).catch(() => {}),
+    );
+    if (!cb.message) return ok();
+    return reply({ method: "editMessageText", chat_id: cb.message.chat.id, message_id: cb.message.message_id, text: valid ? SIGNED_IN_TEXT : EXPIRED_TEXT });
   }
 
   return ok();
