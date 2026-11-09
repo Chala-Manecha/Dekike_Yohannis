@@ -25,4 +25,5 @@ export default [
   route("lang", "routes/lang.ts"),
   route("logout", "routes/logout.ts"),
   route("api/auth/*", "routes/api.auth.ts"),
+  route("api/telegram/webhook", "routes/api.telegram.webhook.ts"),
 ] satisfies RouteConfig;

@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, lt, lte } from "drizzle-orm";
 import { BOT_SEND_BATCH } from "../config";
 import { getDb, schema, type Db } from "../db";
 import { classInfo, duesFor } from "./classyear";
@@ -155,5 +155,7 @@ export async function runCron(env: Env, now = new Date()) {
     await setSetting(db, "lastPlanned", today, null);
   }
   await drainOutbox(env, db);
+  // Old sign-in codes (app/lib/bot-login.ts)
+  await db.delete(schema.botLogins).where(lt(schema.botLogins.expiresAt, now.getTime()));
 }
 

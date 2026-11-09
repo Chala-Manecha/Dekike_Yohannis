@@ -348,3 +348,8 @@ th { color: var(--stone); font-weight: 600; }
 .badge--exam { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
 .badge--assignment { background: color-mix(in srgb, var(--gold) 22%, transparent); color: var(--lapis-ink); }
 .badge--note { background: color-mix(in srgb, #2f7d4f 16%, transparent); color: #2f7d4f; }
+
+/* ---------- Bot sign-in ---------- */
+.bot-login { margin: 1.5rem 0; display: grid; gap: 1rem; justify-items: start; }
+.bot-login-steps { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.4rem; }
+.btn-telegram { background: #229ed9; color: #fff; font-size: var(--step-1); padding: 0.75rem 1.5rem; }

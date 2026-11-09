@@ -325,6 +325,26 @@ export const materials = sqliteTable(
   ],
 );
 
+/**
+ * One-time codes for signing in through the bot (app/lib/bot-login.ts).
+ * The webhook fills in the Telegram account when the member taps "Sign in".
+ */
+export const botLogins = sqliteTable(
+  "bot_logins",
+  {
+    code: text("code").primaryKey(),
+    status: text("status", { enum: ["pending", "confirmed"] })
+      .notNull()
+      .default("pending"),
+    telegramId: text("telegram_id"),
+    name: text("name"),
+    username: text("username"),
+    expiresAt: integer("expires_at").notNull(), // ms since epoch
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("bot_logins_expires_idx").on(t.expiresAt)],
+);
+
 export type Member = typeof members.$inferSelect;
 export type Contribution = typeof contributions.$inferSelect;
 export type Event = typeof events.$inferSelect;

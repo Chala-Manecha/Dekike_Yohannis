@@ -1,0 +1,6 @@
+# Local secrets for `npm run dev`. Copy to .dev.vars (never commit .dev.vars).
+BETTER_AUTH_SECRET=change-me-to-a-long-random-string
+TELEGRAM_BOT_TOKEN=
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+TELEGRAM_WEBHOOK_SECRET=local-test-secret
+PUBLIC_SITE_URL=http://localhost:5173

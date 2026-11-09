@@ -22,6 +22,13 @@
       "when": 1794238249855,
       "tag": "0002_materials",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794240022553,
+      "tag": "0003_bot_login",
+      "breakpoints": true
     }
   ]
 }

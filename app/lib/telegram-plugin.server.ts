@@ -1,20 +1,10 @@
 import type { BetterAuthPlugin, User } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
+import { and, eq, gt } from "drizzle-orm";
 import { z } from "zod";
-import { verifyTelegramLogin, type TelegramLoginData } from "./telegram-verify";
-
-// looseObject: every field Telegram sends is part of the signature, so unknown
-// fields must be kept, not stripped.
-const telegramBody = z.looseObject({
-  id: z.coerce.number().int().positive(),
-  first_name: z.string().min(1),
-  last_name: z.string().optional(),
-  username: z.string().optional(),
-  photo_url: z.string().url().optional(),
-  auth_date: z.coerce.number().int(),
-  hash: z.string().regex(/^[a-f0-9]{64}$/i),
-});
+import { schema, type Db } from "../db";
+import { botStartLink, LOGIN_COOKIE, LOGIN_TTL_MS, isLoginCode, newLoginCode } from "./bot-login";
 
 const devBody = z.object({
   telegramId: z.coerce.number().int().positive(),
@@ -61,33 +51,50 @@ async function signInTelegramUser(ctx: any, tg: TgProfile) {
   return ctx.json({ ok: true });
 }
 
-export function telegram(opts: { botToken: string }) {
+export function telegram(opts: { db: Db; botUsername: string }) {
+  const { db } = opts;
+  const cookieOptions = {
+    httpOnly: true,
+    secure: !import.meta.env.DEV,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: LOGIN_TTL_MS / 1000,
+  };
+
   return {
     id: "telegram",
     endpoints: {
-      signInTelegram: createAuthEndpoint(
-        "/sign-in/telegram",
-        { method: "POST", body: telegramBody },
-        async (ctx) => {
-          const data = ctx.body as TelegramLoginData;
-          const result = await verifyTelegramLogin(data, opts.botToken, Date.now());
-          if (!result.ok) {
-            throw new APIError("UNAUTHORIZED", {
-              message: result.reason === "expired" ? "Telegram login expired. Try again." : "Telegram login could not be verified.",
-            });
-          }
-          const name = [data.first_name, data.last_name].filter(Boolean).join(" ");
-          return signInTelegramUser(ctx, {
-            id: data.id,
-            name,
-            username: data.username,
-            photoUrl: data.photo_url,
-          });
-        },
-      ),
+      // Step 1 (app/lib/bot-login.ts): a fresh one-time code for this browser.
+      botLoginStart: createAuthEndpoint("/bot-login/start", { method: "POST" }, async (ctx) => {
+        const code = newLoginCode();
+        const now = Date.now();
+        await db.insert(schema.botLogins).values({ code, expiresAt: now + LOGIN_TTL_MS, createdAt: now });
+        ctx.setCookie(LOGIN_COOKIE, code, cookieOptions);
+        return ctx.json({ url: botStartLink(opts.botUsername, code), expiresIn: LOGIN_TTL_MS });
+      }),
 
-      // Telegram's widget does not run on localhost. This endpoint exists only in
-      // `npm run dev`: import.meta.env.DEV is replaced with `false` in production builds.
+      // Step 4: the browser that holds the cookie asks whether the member confirmed in the bot.
+      botLoginPoll: createAuthEndpoint("/bot-login/poll", { method: "POST" }, async (ctx) => {
+        const code = ctx.getCookie(LOGIN_COOKIE);
+        if (!isLoginCode(code)) return ctx.json({ status: "expired" as const });
+        // Claim it in one statement so a code can only ever sign in once
+        const [row] = await db
+          .delete(schema.botLogins)
+          .where(and(eq(schema.botLogins.code, code), eq(schema.botLogins.status, "confirmed"), gt(schema.botLogins.expiresAt, Date.now())))
+          .returning();
+        if (!row) {
+          const pending = await db.query.botLogins.findFirst({
+            where: and(eq(schema.botLogins.code, code), gt(schema.botLogins.expiresAt, Date.now())),
+            columns: { code: true },
+          });
+          return ctx.json({ status: pending ? ("pending" as const) : ("expired" as const) });
+        }
+        ctx.setCookie(LOGIN_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+        return signInTelegramUser(ctx, { id: Number(row.telegramId), name: row.name ?? "Telegram", username: row.username ?? undefined });
+      }),
+
+      // Telegram can't reach localhost. This endpoint exists only in `npm run dev`:
+      // import.meta.env.DEV is replaced with `false` in production builds.
       signInDev: createAuthEndpoint("/sign-in/dev", { method: "POST", body: devBody }, async (ctx) => {
         if (!import.meta.env.DEV) throw new APIError("NOT_FOUND");
         return signInTelegramUser(ctx, { id: ctx.body.telegramId, name: ctx.body.name });

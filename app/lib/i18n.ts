@@ -56,9 +56,14 @@ const am = {
   },
   login: {
     title: "ግባ",
-    intro: "በቴሌግራም መለያዎ ይግቡ። ማሳሰቢያዎችም በቦቱ በኩል ይደርሱዎታል።",
+    intro: "በቴሌግራም ቦታችን በኩል ይግቡ። ስልክ ቁጥር አያስፈልግም፤ ማሳሰቢያዎችም በዚሁ ቦት ይደርሱዎታል።",
     signingIn: "በመግባት ላይ…",
     failed: "መግባት አልተሳካም። እንደገና ይሞክሩ።",
+    openBot: "በቴሌግራም ግባ",
+    steps: ["ከታች ያለውን ቁልፍ ይጫኑ፤ ቦቱ በቴሌግራም ይከፈታል።", "«Start» ን ይጫኑ፣ ከዚያም «ግባ» የሚለውን።", "ወደዚህ ገጽ ይመለሱ፤ በራሱ ያስገባዎታል።"],
+    waiting: "በቴሌግራም «ግባ» እስኪጫኑ በመጠበቅ ላይ…",
+    expired: "ጊዜው አልፏል።",
+    retry: "እንደገና ሞክር",
   },
   register: {
     title: "የአባልነት ምዝገባ",
@@ -362,9 +367,14 @@ const om: Dict = {
   },
   login: {
     title: "Seeni",
-    intro: "Herrega Telegram keessaniin seenaa. Yaadachiisni boottii kanaan isin ga'a.",
+    intro: "Boottii Telegram keenyaan seenaa. Lakkoofsi bilbilaa hin barbaachisu; yaadachiisnis boottii kanaan isin ga'a.",
     signingIn: "Seenaa jira…",
     failed: "Seenuun hin milkoofne. Irra deebi'aa yaalaa.",
+    openBot: "Telegram'n seeni",
+    steps: ["Furtuu armaan gadii tuqaa; boottiin Telegram irratti bana.", "«Start» tuqaa, achiis «Seeni».", "Fuula kanatti deebi'aa; ofumaan isin seensisa."],
+    waiting: "Hanga Telegram irratti «Seeni» tuqxanitti eegaa jira…",
+    expired: "Yeroon darbeera.",
+    retry: "Irra deebi'ii yaali",
   },
   register: {
     title: "Galmee miseensummaa",

@@ -8,10 +8,11 @@ import { telegram } from "./telegram-plugin.server";
  * Workers free-plan CPU limit, and members already live in Telegram.
  */
 export function createAuth(env: Env) {
+  const db = getDb(env.DB);
   return betterAuth({
     baseURL: env.PUBLIC_SITE_URL,
     secret: env.BETTER_AUTH_SECRET,
-    database: drizzleAdapter(getDb(env.DB), {
+    database: drizzleAdapter(db, {
       provider: "sqlite",
       schema: {
         user: schema.user,
@@ -33,7 +34,7 @@ export function createAuth(env: Env) {
       // Saves a D1 read on most page loads
       cookieCache: { enabled: true, maxAge: 60 * 5 },
     },
-    plugins: [telegram({ botToken: env.TELEGRAM_BOT_TOKEN })],
+    plugins: [telegram({ db, botUsername: env.TELEGRAM_BOT_USERNAME })],
   });
 }
 

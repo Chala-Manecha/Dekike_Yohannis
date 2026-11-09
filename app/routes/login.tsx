@@ -1,6 +1,6 @@
 import { Form, redirect, useNavigation } from "react-router";
 import type { Route } from "./+types/login";
-import { TelegramLogin } from "../components/TelegramLogin";
+import { BotLogin } from "../components/BotLogin";
 import { getUser, safeRedirect } from "../lib/session.server";
 import { useT } from "../lib/use-t";
 
@@ -8,17 +8,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const next = safeRedirect(new URL(request.url).searchParams.get("next"), "/me");
   if (await getUser(request, env)) throw redirect(next);
-  return { next, botUsername: env.TELEGRAM_BOT_USERNAME, devLogin: import.meta.env.DEV };
+  return { next, devLogin: import.meta.env.DEV };
 }
 
 export default function Login({ loaderData }: Route.ComponentProps) {
   const { tr } = useT();
-  const { next, botUsername, devLogin } = loaderData;
+  const { next, devLogin } = loaderData;
+  const l = tr.login;
   return (
     <section className="page narrow">
       <h1>{tr.login.title}</h1>
       <p>{tr.login.intro}</p>
-      <TelegramLogin botUsername={botUsername} next={next} busyText={tr.login.signingIn} failedText={tr.login.failed} />
+      <BotLogin next={next} labels={{ open: l.openBot, steps: l.steps, waiting: l.waiting, expired: l.expired, retry: l.retry, failed: l.failed }} />
       {devLogin && <DevLogin next={next} />}
     </section>
   );
