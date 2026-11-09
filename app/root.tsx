@@ -45,6 +45,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       finance: user ? can(user.role, "finance:view") : false,
       members: user ? can(user.role, "member:list") : false,
       feedback: user ? can(user.role, "feedback:read") : false,
+      property: user ? can(user.role, "property:manage") : false,
     },
   }, { headers });
 }
@@ -78,11 +79,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <NavLink to="/" end>{tr.nav.home}</NavLink>
             <NavLink to="/gallery">{tr.nav.gallery}</NavLink>
             {data?.user && <NavLink to="/materials">{tr.nav.materials}</NavLink>}
+            {data?.user && <NavLink to="/songs">{tr.nav.songs}</NavLink>}
             {data?.user ? <NavLink to="/me">{tr.nav.myPage}</NavLink> : <NavLink to="/register">{tr.nav.register}</NavLink>}
             {data?.nav.events && <NavLink to="/events">{tr.nav.events}</NavLink>}
             {data?.nav.tasks && <NavLink to="/tasks">{tr.nav.tasks}</NavLink>}
             {data?.nav.finance && <NavLink to="/finance">{tr.nav.finance}</NavLink>}
             {data?.nav.members && <NavLink to="/members">{tr.nav.members}</NavLink>}
+            {data?.nav.property && <NavLink to="/property">{tr.nav.property}</NavLink>}
             {data?.nav.feedback && <NavLink to="/feedback/inbox">{tr.nav.feedback}</NavLink>}
             {!data?.user && <NavLink to="/login">{tr.nav.signIn}</NavLink>}
           </nav>

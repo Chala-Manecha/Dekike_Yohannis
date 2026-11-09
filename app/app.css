@@ -381,3 +381,19 @@ th { color: var(--stone); font-weight: 600; }
 .ledger .void-note { display: block; text-decoration: none; color: var(--stone); margin-top: 0.2rem; }
 .ledger tr.is-void td .void-note { display: inline-block; }
 .void summary { cursor: pointer; color: var(--stone); font-size: var(--step--1); }
+
+/* ---------- Songs ---------- */
+.song-list { list-style: none; padding: 0; margin: 1rem 0; }
+.song-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+.song-first { flex-basis: 100%; font-size: var(--step--1); }
+.song h1 { margin-bottom: 0.25rem; }
+.lyrics { white-space: pre-wrap; font-size: var(--step-1); line-height: 1.8; margin: 1.5rem 0 2rem; overflow-wrap: anywhere; }
+
+/* ---------- Property ---------- */
+.property-list { list-style: none; padding: 0; margin: 1rem 0; }
+.property-list > li { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; padding: 0.9rem 0; border-bottom: 1px solid var(--line); align-items: start; }
+.property-list > li:not(:has(.property-photo)) { grid-template-columns: 1fr; }
+.property-photo img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; display: block; background: var(--line); }
+.property-edit { grid-column: 1 / -1; }
+.property-edit summary { cursor: pointer; color: var(--lapis); font-size: var(--step--1); }
+.cond--broken .property-main strong { color: var(--red); }

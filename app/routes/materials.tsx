@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, like, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, type SQL } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/materials";
 import { MaterialUpload } from "../components/MaterialUpload";
@@ -6,6 +6,7 @@ import { ACADEMIC_DEPARTMENTS } from "../config";
 import { getDb, schema } from "../db";
 import { formatBytes, materialKey, MATERIAL_KINDS, MAX_STUDY_YEAR, type MaterialKind } from "../lib/materials";
 import { materialAccess } from "../lib/materials.server";
+import { contains } from "../lib/search.server";
 import { useT } from "../lib/use-t";
 
 const LIST_LIMIT = 300;
@@ -37,8 +38,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (filters.year) where.push(or(eq(m.studyYear, filters.year), isNull(m.studyYear))!);
   if (kind) where.push(eq(m.kind, kind));
   if (filters.q) {
-    const pattern = `%${filters.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    where.push(or(like(m.title, pattern), like(m.course, pattern))!);
+    where.push(or(contains(m.title, filters.q), contains(m.course, filters.q))!);
   }
 
   const [items, mine, pending, courses] = await Promise.all([

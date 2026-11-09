@@ -353,6 +353,34 @@ export const ledgerEntries = sqliteTable(
   (t) => [index("ledger_date_idx").on(t.date)],
 );
 
+/** Songs (faarfannaa / መዝሙር). Read by active members; the songs department edits. */
+export const songs = sqliteTable(
+  "songs",
+  {
+    id: id(),
+    title: text("title").notNull(),
+    lang: text("lang", { enum: ["om", "am", "gez", "other"] }).notNull(),
+    lyrics: text("lyrics").notNull(),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("songs_title_idx").on(t.title)],
+);
+
+/** Property (qabeenya / ንብረት) inventory. Photo (optional) in private R2 at property/<id>.<ext>. */
+export const propertyItems = sqliteTable("property_items", {
+  id: id(),
+  name: text("name").notNull(),
+  quantity: integer("quantity").notNull(),
+  condition: text("condition", { enum: ["good", "worn", "broken"] }).notNull(),
+  location: text("location"),
+  note: text("note"),
+  photoKey: text("photo_key"),
+  updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
 /** Wrong-password counter per student ID (app/lib/login-limit.ts). */
 export const loginAttempts = sqliteTable("login_attempts", {
   key: text("key").primaryKey(),

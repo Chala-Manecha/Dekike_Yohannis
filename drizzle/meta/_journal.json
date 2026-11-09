@@ -57,6 +57,13 @@
       "when": 1794255771163,
       "tag": "0007_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794256237715,
+      "tag": "0008_songs_property",
+      "breakpoints": true
     }
   ]
 }

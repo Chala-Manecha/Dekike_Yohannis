@@ -22,6 +22,9 @@ Telegram bot + Cron · Turnstile. Interface in **Afaan Oromoo (default) and Amha
 | Review contributions, monthly paid/unpaid, set dues | finance (leader: read-only) | `/finance` |
 | Money in/out ledger by Ethiopian month, receipts, void with reason, CSV | finance (leader: read-only) | `/finance/ledger` |
 | Monthly income, spending and balance (totals only) | active members | `/money` |
+| Songs: search, read lyrics (large text for singing) | active members | `/songs` |
+| Add, edit, delete songs | songs · leader | `/songs` |
+| Property inventory: quantity, condition, where it is, photo | property · leader | `/property` |
 | Events: create, reschedule, cancel, running order | preparation · leader | `/events` |
 | Assign tasks to departments per event | leader | `/events/:id` |
 | A department's tasks | department leads | `/tasks` |
@@ -125,10 +128,11 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 116 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/lib/songs.ts` · `app/lib/property.ts` · `app/lib/search.server.ts` safe search · `app/db/schema.ts` tables · `tests/` 122 tests
 
-## Next round
-Songs · property.
+## Ideas for later
+Audio for songs · songs chosen per zikr · property lending log · a collapsible menu on phones
+(the menu is getting long for staff roles).
 
 ## Scripts
 `npm run dev` · `npm test` · `npm run typecheck` · `npm run build` · `npm run db:generate`
