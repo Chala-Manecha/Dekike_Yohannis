@@ -1,145 +1,111 @@
-import type { BetterAuthPlugin, User } from "better-auth";
+import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { and, eq, gt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Db } from "../db";
-import { botStartLink, LOGIN_COOKIE, LOGIN_TTL_MS, isLoginCode, newLoginCode, safeEqual } from "./bot-login";
+import { getPasswordHash, linkTelegram, memberByStudentId, refreshTelegramProfile, userForTelegram, userIdForTelegram, type TgProfile } from "./accounts.server";
+import { telegramName } from "./bot-login";
+import { afterFailure, isLocked } from "./login-limit";
+import { hashPassword, verifyPassword } from "./password";
+import { studentIdSchema } from "./registration";
+import { verifyWebAppInitData } from "./telegram-webapp";
 
-const devBody = z.object({
-  telegramId: z.coerce.number().int().positive(),
-  name: z.string().min(1).max(80),
-});
+/**
+ * How members sign in (all checks on the server):
+ *  - /student-login: student ID + password (the website)
+ *  - /telegram-webapp: inside the Telegram mini app, automatic for a linked Telegram account
+ *  - /telegram-link: first time in the mini app, ties Telegram to an existing website account
+ */
 
-const PROVIDER = "telegram";
+const devBody = z.object({ telegramId: z.coerce.number().int().positive(), name: z.string().min(1).max(80) });
+const credentials = z.object({ studentId: z.string().max(40), password: z.string().max(128) });
 
-type TgProfile = { id: number; name: string; username?: string; photoUrl?: string };
-
-async function signInTelegramUser(ctx: any, tg: TgProfile) {
+async function startSession(ctx: any, userId: string) {
   const adapter = ctx.context.internalAdapter;
-  const accountId = String(tg.id);
-  const owner = await adapter.findAccountOwnerByKey({ providerId: PROVIDER, accountId });
-
-  let user: User;
-  if (owner?.kind === "owned") {
-    user =
-      (await adapter.updateUser(owner.user.id, {
-        name: tg.name,
-        image: tg.photoUrl ?? owner.user.image ?? null,
-        telegramUsername: tg.username ?? null,
-      })) ?? owner.user;
-  } else if (owner?.kind === "orphaned") {
-    throw new APIError("CONFLICT", { message: "Telegram account is in a broken state. Ask an admin." });
-  } else {
-    const created = await adapter.createOAuthUser(
-      {
-        name: tg.name,
-        email: `tg-${tg.id}@users.telegram.invalid`,
-        emailVerified: false,
-        image: tg.photoUrl ?? null,
-        telegramId: accountId,
-        telegramUsername: tg.username ?? null,
-      },
-      { providerId: PROVIDER, accountId },
-    );
-    user = created.user;
-  }
-
+  const user = await adapter.findUserById(userId);
+  if (!user) throw new APIError("INTERNAL_SERVER_ERROR", { message: "User missing" });
   const session = await adapter.createSession(user.id);
   if (!session) throw new APIError("INTERNAL_SERVER_ERROR", { message: "Could not create session" });
   await setSessionCookie(ctx, { session, user });
 }
 
-type BotLoginRow = typeof schema.botLogins.$inferSelect;
-
-export function telegram(opts: { db: Db; botUsername: string }) {
+export function telegram(opts: { db: Db; botToken: string }) {
   const { db } = opts;
-  const cookieOptions = {
-    httpOnly: true,
-    secure: !import.meta.env.DEV,
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: LOGIN_TTL_MS / 1000,
-  };
-  const live = (code: string) => and(eq(schema.botLogins.code, code), gt(schema.botLogins.expiresAt, Date.now()));
+  // Used when the student ID doesn't exist, so a wrong ID takes as long as a wrong password
+  const dummyHash = hashPassword("not-a-real-password");
 
-  /**
-   * Takes a confirmed code (once: deleted in the same statement) and signs in. If signing in
-   * fails, the code is put back so the member can simply try again instead of starting over.
-   */
-  async function finishSignIn(ctx: any, row: BotLoginRow) {
-    try {
-      await signInTelegramUser(ctx, { id: Number(row.telegramId), name: row.name ?? "Telegram", username: row.username ?? undefined });
-    } catch (e) {
-      console.error("bot-login: sign-in failed", e);
-      await db.insert(schema.botLogins).values(row).onConflictDoNothing();
-      throw e;
+  /** Student ID + password → user id, with the wrong-password lockout. Throws a generic error. */
+  async function checkCredentials(rawId: string, password: string) {
+    const parsed = studentIdSchema.safeParse(rawId);
+    const studentId = parsed.success ? parsed.data : rawId.trim().toUpperCase();
+    const key = `sid:${studentId}`;
+    const now = Date.now();
+    const attempts = await db.query.loginAttempts.findFirst({ where: eq(schema.loginAttempts.key, key) });
+    if (isLocked(attempts, now)) throw new APIError("TOO_MANY_REQUESTS", { message: "locked" });
+
+    const member = parsed.success ? await memberByStudentId(db, studentId) : undefined;
+    const hash = member ? await getPasswordHash(db, member.userId) : null;
+    const ok = await verifyPassword(password, hash ?? (await dummyHash));
+    if (!member || !hash || !ok) {
+      const next = afterFailure(attempts, now);
+      await db.insert(schema.loginAttempts).values({ key, ...next }).onConflictDoUpdate({ target: schema.loginAttempts.key, set: next });
+      throw new APIError("UNAUTHORIZED", { message: "bad_credentials" });
     }
-    ctx.setCookie(LOGIN_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+    if (attempts) await db.delete(schema.loginAttempts).where(eq(schema.loginAttempts.key, key));
+    return member.userId;
   }
 
-  async function claimConfirmed(code: string) {
-    const [row] = await db
-      .delete(schema.botLogins)
-      .where(and(live(code), eq(schema.botLogins.status, "confirmed")))
-      .returning();
-    return row;
+  async function telegramFrom(initData: string): Promise<TgProfile> {
+    const result = await verifyWebAppInitData(initData, opts.botToken, Date.now());
+    if (!result.ok) throw new APIError("UNAUTHORIZED", { message: result.reason });
+    const u = result.user;
+    return { id: u.id, name: telegramName(u), username: u.username ?? null, photoUrl: u.photo_url ?? null };
   }
 
   return {
     id: "telegram",
     endpoints: {
-      // Step 1 (app/lib/bot-login.ts): a one-time code for this browser. If the page is
-      // reloaded (common when switching to Telegram and back) the same code is reused.
-      botLoginStart: createAuthEndpoint("/bot-login/start", { method: "POST" }, async (ctx) => {
-        const existing = ctx.getCookie(LOGIN_COOKIE);
-        if (isLoginCode(existing)) {
-          const row = await db.query.botLogins.findFirst({ where: live(existing) });
-          if (row && row.expiresAt - Date.now() > 60_000) {
-            return ctx.json({ url: botStartLink(opts.botUsername, row.code), confirmed: row.status === "confirmed" });
-          }
-        }
-        const code = newLoginCode();
-        const now = Date.now();
-        await db.insert(schema.botLogins).values({ code, expiresAt: now + LOGIN_TTL_MS, createdAt: now });
-        ctx.setCookie(LOGIN_COOKIE, code, cookieOptions);
-        return ctx.json({ url: botStartLink(opts.botUsername, code), confirmed: false });
-      }),
-
-      // Step 4: the browser holding the cookie asks whether the member confirmed in the bot.
-      botLoginPoll: createAuthEndpoint("/bot-login/poll", { method: "POST" }, async (ctx) => {
-        const code = ctx.getCookie(LOGIN_COOKIE);
-        if (!isLoginCode(code)) return ctx.json({ status: "expired" as const });
-        const row = await claimConfirmed(code);
-        if (!row) {
-          const pending = await db.query.botLogins.findFirst({ where: live(code), columns: { code: true } });
-          return ctx.json({ status: pending ? ("pending" as const) : ("expired" as const) });
-        }
-        await finishSignIn(ctx, row);
+      studentLogin: createAuthEndpoint("/student-login", { method: "POST", body: credentials }, async (ctx) => {
+        const userId = await checkCredentials(ctx.body.studentId, ctx.body.password);
+        await startSession(ctx, userId);
         return ctx.json({ ok: true });
       }),
 
-      // From the bot's "open the website" button: signs in whichever browser opens it.
-      // The secret part (k) is only ever sent in the member's own bot chat.
-      botLoginClaim: createAuthEndpoint(
-        "/bot-login/claim",
-        { method: "GET", query: z.object({ c: z.string(), k: z.string() }) },
+      // Inside the mini app. Linked Telegram account → signed in. Otherwise the app shows
+      // the "link or register" page; create=true makes a new account for registering.
+      telegramWebApp: createAuthEndpoint(
+        "/telegram-webapp",
+        { method: "POST", body: z.object({ initData: z.string().min(1).max(4096), create: z.boolean().optional() }) },
         async (ctx) => {
-          const { c, k } = ctx.query;
-          const row = isLoginCode(c) ? await db.query.botLogins.findFirst({ where: and(live(c), eq(schema.botLogins.status, "confirmed")) }) : undefined;
-          if (!row || !safeEqual(row.claim, k)) throw ctx.redirect("/login?expired=1");
-          const claimed = await claimConfirmed(row.code);
-          if (!claimed) throw ctx.redirect("/me"); // the waiting browser was quicker
-          await finishSignIn(ctx, claimed);
-          throw ctx.redirect("/me");
+          const tg = await telegramFrom(ctx.body.initData);
+          let userId = await userIdForTelegram(db, tg.id);
+          if (userId) await refreshTelegramProfile(db, userId, tg);
+          else if (ctx.body.create) userId = await userForTelegram(db, tg);
+          else return ctx.json({ ok: false, linked: false });
+          await startSession(ctx, userId);
+          return ctx.json({ ok: true });
         },
       ),
 
-      // Telegram can't reach localhost. This endpoint exists only in `npm run dev`:
-      // import.meta.env.DEV is replaced with `false` in production builds.
+      telegramLink: createAuthEndpoint(
+        "/telegram-link",
+        { method: "POST", body: credentials.extend({ initData: z.string().min(1).max(4096) }) },
+        async (ctx) => {
+          const tg = await telegramFrom(ctx.body.initData);
+          const userId = await checkCredentials(ctx.body.studentId, ctx.body.password);
+          const error = await linkTelegram(db, userId, tg);
+          if (error) throw new APIError("CONFLICT", { message: error });
+          await startSession(ctx, userId);
+          return ctx.json({ ok: true });
+        },
+      ),
+
+      // Local development only: import.meta.env.DEV is replaced with `false` in production builds.
       signInDev: createAuthEndpoint("/sign-in/dev", { method: "POST", body: devBody }, async (ctx) => {
         if (!import.meta.env.DEV) throw new APIError("NOT_FOUND");
-        await signInTelegramUser(ctx, { id: ctx.body.telegramId, name: ctx.body.name });
+        const userId = await userForTelegram(db, { id: ctx.body.telegramId, name: ctx.body.name });
+        await startSession(ctx, userId);
         return ctx.json({ ok: true });
       }),
     },

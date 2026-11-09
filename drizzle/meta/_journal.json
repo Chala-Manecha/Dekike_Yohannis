@@ -36,6 +36,20 @@
       "when": 1794244439181,
       "tag": "0004_student_id_grad_month",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794254549057,
+      "tag": "0005_passwords_bot_register",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794254549575,
+      "tag": "0006_drop_bot_logins",
+      "breakpoints": true
     }
   ]
 }

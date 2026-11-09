@@ -355,3 +355,13 @@ th { color: var(--stone); font-weight: 600; }
 .bot-login { margin: 1.5rem 0; display: grid; gap: 1rem; justify-items: start; }
 .bot-login-steps { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.4rem; }
 .btn-telegram { background: #229ed9; color: #fff; font-size: var(--step-1); padding: 0.75rem 1.5rem; }
+.tg-signing-in { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: var(--paper); color: var(--lapis); font-weight: 600; }
+
+/* ---------- Sign-in & account ---------- */
+.small { font-size: var(--step--1); }
+.or-telegram { margin-top: 2rem; padding-top: 1rem; border-top: 1px dashed var(--line); }
+.link-new { margin-top: 1.5rem; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 1rem; margin: 1rem 0 2rem; }
+.facts dt { font-weight: 600; }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.password-fields { display: grid; gap: 0.8rem; }

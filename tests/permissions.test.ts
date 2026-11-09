@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, canAssignRole, canWorkTask, departmentOf, PERMISSIONS, ROLES, type Permission } from "../app/lib/permissions";
+import { can, canAssignRole, canResetPassword, canWorkTask, departmentOf, PERMISSIONS, ROLES, type Permission } from "../app/lib/permissions";
 
 const who = (p: Permission) => ROLES.filter((r) => can(r, p));
 
@@ -21,6 +21,14 @@ describe("can", () => {
     expect(can("preparation", "event:manage")).toBe(true);
     expect(can("preparation", "program:manage")).toBe(true);
     expect(can("songs", "event:manage")).toBe(false);
+  });
+  it("coordinator resets members' passwords, only admins reset leaders' and admins'", () => {
+    expect(canResetPassword("members_coordinator", "member")).toBe(true);
+    expect(canResetPassword("members_coordinator", "finance")).toBe(true);
+    expect(canResetPassword("members_coordinator", "leader")).toBe(false);
+    expect(canResetPassword("leader", "admin")).toBe(false);
+    expect(canResetPassword("admin", "leader")).toBe(true);
+    expect(canResetPassword("finance", "member")).toBe(false);
   });
   it("only leader, preparation and admin manage event photos", () => {
     expect(who("photo:manage")).toEqual(["preparation", "leader", "admin"]);

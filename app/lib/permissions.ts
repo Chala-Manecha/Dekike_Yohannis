@@ -83,3 +83,13 @@ export function canAssignRole(actor: Role, targetCurrent: Role, next: Role): boo
 export function canWorkTask(role: Role, department: ServiceDepartment): boolean {
   return role === "admin" || role === "leader" || departmentOf(role) === department;
 }
+
+/**
+ * Forgotten password: the member coordinator (or leader/admin) clears it, and the member sets a
+ * new one after signing in through Telegram. Only an admin can reset a leader's or admin's.
+ */
+export function canResetPassword(actor: Role, target: Role): boolean {
+  if (!can(actor, "registration:review")) return false;
+  if (actor === "admin") return true;
+  return target !== "leader" && target !== "admin";
+}

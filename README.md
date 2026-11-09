@@ -63,15 +63,29 @@ A cron runs every 30 minutes. Once a day after 08:00 Addis it plans the day's me
 to 40 (Workers free plan limit). Messages wait in the `outbox` table, so nothing is lost or sent twice.
 A member only gets private messages if they allowed the bot when signing in with Telegram.
 
-## Sign-in (through the bot)
-No phone number on any web page. `/login` gets a one-time code (10 min, HttpOnly cookie in that browser)
-and a button to `t.me/<bot>?start=login_<code>`. The member taps Start, then "Seeni / ግባ" under the bot's
-message; the webhook (`/api/telegram/webhook`, checked with `TELEGRAM_WEBHOOK_SECRET`) confirms the code
-and the waiting browser is signed in. If that browser was closed or reloaded meanwhile, the same code is
-reused, and the bot's message also gets an "open the website" button with a one-time link that signs in
-whichever browser opens it. Everyone who signs in has started the bot, so reminders reach them.
-Sessions end after **30 days without a visit** (each day with a visit extends it) or on sign-out.
-Code in `app/lib/bot-login.ts` (tested), `app/lib/telegram-plugin.server.ts`, `app/components/BotLogin.tsx`.
+## Sign-in and registration
+**Website (main way): student ID + password.** Passwords are PBKDF2-SHA256 (WebCrypto, 20,000 rounds:
+fits the free plan's CPU limit; the round count is stored in each hash so it can be raised later).
+5 wrong passwords in 15 minutes lock that student ID for 15 minutes. Forgotten password: the member
+coordinator clicks "reset password" on `/members`; the member signs in through Telegram and sets a new
+one on `/me/account`. Code: `app/lib/password.ts`, `app/lib/login-limit.ts`, `app/lib/accounts.server.ts`.
+
+**Telegram mini app: the full site inside Telegram.** Telegram passes signed data about the user; the
+server checks it with the bot token (`app/lib/telegram-webapp.ts`). The Telegram account (its numeric id,
+which never changes; the @username is kept for display) is tied to one member:
+- first time: `/link` — sign in once with student ID + password, or register as a new member
+- after that: opening the app signs in automatically
+Menu button (set once):
+```
+curl "https://api.telegram.org/bot<TOKEN>/setChatMenuButton" -H "Content-Type: application/json" -d '{"menu_button":{"type":"web_app","text":"Bani · ክፈት","web_app":{"url":"https://dekike-yohannis.henon1918.workers.dev"}}}'
+```
+
+**Registration** works three ways: the website form (sets the password too), the form inside the mini
+app (password optional), or **in the bot**: /start → "Register", then one question at a time with
+buttons (language, name, Christian name, gender, phone via "share my number", student ID, department,
+student/graduate, year, graduation month), a summary, and Submit. `/cancel` stops. Passwords are never
+asked in the chat; bot-registered members set one in the mini app. State per chat lives in
+`bot_registrations` (`app/lib/bot-register.ts`, tested).
 
 ## Roles
 `member` · `members_coordinator` · `finance` · `songs` · `property` · `preparation` · `education` · `leader` · `admin`.
@@ -103,7 +117,7 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 91 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 106 tests
 
 ## Next round
 Songs · property · full money in/out ledger.

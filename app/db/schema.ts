@@ -328,27 +328,20 @@ export const materials = sqliteTable(
   ],
 );
 
-/**
- * One-time codes for signing in through the bot (app/lib/bot-login.ts).
- * The webhook fills in the Telegram account when the member taps "Sign in".
- */
-export const botLogins = sqliteTable(
-  "bot_logins",
-  {
-    code: text("code").primaryKey(),
-    status: text("status", { enum: ["pending", "confirmed"] })
-      .notNull()
-      .default("pending"),
-    telegramId: text("telegram_id"),
-    name: text("name"),
-    username: text("username"),
-    // Sent only in the bot chat after confirming: lets the member finish signing in from any browser
-    claim: text("claim"),
-    expiresAt: integer("expires_at").notNull(), // ms since epoch
-    createdAt: integer("created_at").notNull(),
-  },
-  (t) => [index("bot_logins_expires_idx").on(t.expiresAt)],
-);
+/** Wrong-password counter per student ID (app/lib/login-limit.ts). */
+export const loginAttempts = sqliteTable("login_attempts", {
+  key: text("key").primaryKey(),
+  failures: integer("failures").notNull(),
+  windowStart: integer("window_start").notNull(), // ms since epoch
+});
+
+/** Registration in the bot, one question at a time (app/lib/bot-register.ts). One row per chat. */
+export const botRegistrations = sqliteTable("bot_registrations", {
+  chatId: text("chat_id").primaryKey(),
+  step: text("step").notNull(),
+  data: text("data", { mode: "json" }).$type<Record<string, string>>().notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
 
 export type Member = typeof members.$inferSelect;
 export type Contribution = typeof contributions.$inferSelect;

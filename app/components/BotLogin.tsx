@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { signInWithTelegram, telegramInitData } from "./TelegramMiniApp";
 
 type Labels = { open: string; steps: string[]; waiting: string; expired: string; botHint: string; retry: string; failed: string };
 
@@ -11,7 +12,8 @@ const POLL_MS = 2000;
  */
 export function BotLogin({ next, labels }: { next: string; labels: Labels }) {
   const [url, setUrl] = useState<string | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "waiting" | "expired" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "waiting" | "expired" | "error" | "telegram">("loading");
+  const [initData, setInitData] = useState<string | null>(null);
 
   async function start() {
     setState("loading");
@@ -27,7 +29,12 @@ export function BotLogin({ next, labels }: { next: string; labels: Labels }) {
   }
 
   useEffect(() => {
-    start();
+    // Inside Telegram: one tap, no bot round-trip
+    const tg = telegramInitData();
+    if (tg) {
+      setInitData(tg);
+      setState("telegram");
+    } else start();
   }, []);
 
   useEffect(() => {
@@ -62,6 +69,23 @@ export function BotLogin({ next, labels }: { next: string; labels: Labels }) {
       window.removeEventListener("focus", onBack);
     };
   }, [state, next]);
+
+  if (state === "telegram" && initData) {
+    return (
+      <div className="bot-login">
+        <button
+          type="button"
+          className="btn btn-primary btn-telegram"
+          onClick={async () => {
+            if (await signInWithTelegram(initData)) window.location.assign(next);
+            else setState("error");
+          }}
+        >
+          {labels.open}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bot-login">

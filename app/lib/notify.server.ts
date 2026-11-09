@@ -156,7 +156,8 @@ export async function runCron(env: Env, now = new Date()) {
     await setSetting(db, "lastPlanned", today, null);
   }
   await drainOutbox(env, db);
-  // Old sign-in codes (app/lib/bot-login.ts)
-  await db.delete(schema.botLogins).where(lt(schema.botLogins.expiresAt, now.getTime()));
+  // Bot registrations left unfinished for a week, and old wrong-password counters
+  await db.delete(schema.botRegistrations).where(lt(schema.botRegistrations.updatedAt, now.getTime() - 7 * 86_400_000));
+  await db.delete(schema.loginAttempts).where(lt(schema.loginAttempts.windowStart, now.getTime() - 86_400_000));
 }
 

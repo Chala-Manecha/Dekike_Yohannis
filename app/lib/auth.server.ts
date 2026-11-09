@@ -36,7 +36,7 @@ export function createAuth(env: Env) {
       // Saves a D1 read on most page loads
       cookieCache: { enabled: true, maxAge: 60 * 5 },
     },
-    plugins: [telegram({ db, botUsername: env.TELEGRAM_BOT_USERNAME })],
+    plugins: [telegram({ db, botToken: env.TELEGRAM_BOT_TOKEN })],
   });
 }
 

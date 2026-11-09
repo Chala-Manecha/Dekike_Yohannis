@@ -10,6 +10,7 @@ import { departmentOf } from "../lib/permissions";
 import { currentDueMonth, monthKey, toEth, type EthMonth } from "../lib/ethiopian";
 import { formatEth, standingLabel } from "../lib/i18n";
 import { requireUser } from "../lib/session.server";
+import { markSignedOut } from "../components/TelegramMiniApp";
 import { useT } from "../lib/use-t";
 import { useState } from "react";
 
@@ -266,9 +267,13 @@ function PayForm({
 }
 
 function SignOut({ label }: { label: string }) {
+  const { tr } = useT();
   return (
-    <Form method="post" action="/logout" className="signout">
+    <>
+    <p><Link to="/me/account" className="btn btn-quiet btn-sm">{tr.accountSettings.title}</Link></p>
+    <Form method="post" action="/logout" className="signout" onSubmit={markSignedOut}>
       <button className="btn btn-quiet">{label}</button>
     </Form>
+    </>
   );
 }

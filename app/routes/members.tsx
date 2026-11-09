@@ -5,7 +5,8 @@ import { getDb, schema } from "../db";
 import { classInfo } from "../lib/classyear";
 import { toEth } from "../lib/ethiopian";
 import { standingLabel } from "../lib/i18n";
-import { can, canAssignRole, isRole, ROLES, type Role } from "../lib/permissions";
+import { clearPassword } from "../lib/accounts.server";
+import { can, canAssignRole, canResetPassword, isRole, ROLES, type Role } from "../lib/permissions";
 import { reviewMemberTransition } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 import { useT } from "../lib/use-t";
@@ -60,6 +61,16 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (userId === actor.id || !canAssignRole(actor.role, current, next)) return { message: "roleDenied" as const };
     await db.update(schema.user).set({ role: next }).where(eq(schema.user.id, userId));
     return { message: "roleSaved" as const };
+  }
+
+  if (form.get("intent") === "resetPassword") {
+    const actor = await requirePermission(request, env, "registration:review");
+    const userId = String(form.get("userId") ?? "");
+    const target = await db.query.user.findFirst({ where: eq(schema.user.id, userId), columns: { role: true } });
+    if (!target) throw new Response("Not found", { status: 404 });
+    if (userId === actor.id || !canResetPassword(actor.role, isRole(target.role) ? target.role : "member")) return { message: "roleDenied" as const };
+    await clearPassword(db, userId);
+    return { message: "passwordReset" as const };
   }
 
   const reviewer = await requirePermission(request, env, "registration:review");
@@ -147,6 +158,13 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
                   </Form>
                 ) : (
                   tr.roles[m.role]
+                )}
+                {canReview && canResetPassword(actorRole, m.role) && (
+                  <Form method="post" className="row-actions" onSubmit={(e) => { if (!confirm(t.resetConfirm)) e.preventDefault(); }}>
+                    <input type="hidden" name="intent" value="resetPassword" />
+                    <input type="hidden" name="userId" value={m.userId} />
+                    <button className="link-btn" disabled={nav.state !== "idle"}>{t.resetPassword}</button>
+                  </Form>
                 )}
               </td>
             </tr>

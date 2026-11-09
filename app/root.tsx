@@ -13,6 +13,7 @@ import {
 import type { Route } from "./+types/root";
 import { LangChooser } from "./components/LangChooser";
 import { LangSwitch } from "./components/LangSwitch";
+import { TelegramMiniApp } from "./components/TelegramMiniApp";
 import { GROUP } from "./config";
 import { t } from "./lib/i18n";
 import { chosenLang, DEFAULT_LANG, langCookie } from "./lib/lang";
@@ -67,6 +68,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {askLang && <LangChooser />}
+        <TelegramMiniApp signedIn={Boolean(data?.user)} label={tr.login.signingIn} />
         <header className="site-header" inert={askLang}>
           <Link to="/" className="wordmark">
             <span>{tr.groupName}</span>

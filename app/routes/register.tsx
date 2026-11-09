@@ -9,24 +9,35 @@ import { GRADUATION_MONTHS, PROGRAM_YEARS, type AcademicDepartment } from "../co
 import { resolveClass } from "../lib/classyear";
 import { toEth } from "../lib/ethiopian";
 import type { Dict } from "../lib/i18n";
+import { createUser, setPasswordHash } from "../lib/accounts.server";
+import { createAuth } from "../lib/auth.server";
+import { createMember } from "../lib/members.server";
+import { hashPassword, passwordSchema } from "../lib/password";
 import { registrationSchema } from "../lib/registration";
-import { requireUser } from "../lib/session.server";
+import { getUser } from "../lib/session.server";
 import { verifyTurnstile } from "../lib/turnstile.server";
 import { useT } from "../lib/use-t";
 
 type ErrorKey = keyof Dict["errors"];
 
+/**
+ * Two ways in: on the website (not signed in) the form also sets the password used to sign in
+ * with the student ID; inside Telegram the member is already signed in, so the password is optional
+ * (it can be set later on "My page").
+ */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  const user = await requireUser(request, env);
-  const existing = await getDb(env.DB).query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true } });
-  if (existing) throw redirect("/me");
-  return { userName: user.name, turnstileSiteKey: env.TURNSTILE_SITE_KEY, thisYear: toEth(new Date()).year };
+  const user = await getUser(request, env);
+  if (user) {
+    const existing = await getDb(env.DB).query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true } });
+    if (existing) throw redirect("/me");
+  }
+  return { userName: user?.name ?? "", signedIn: Boolean(user), turnstileSiteKey: env.TURNSTILE_SITE_KEY, thisYear: toEth(new Date()).year };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.cloudflare;
-  const user = await requireUser(request, env);
+  const user = await getUser(request, env);
   const form = await request.formData();
 
   const human = await verifyTurnstile(form.get("cf-turnstile-response"), env.TURNSTILE_SECRET_KEY, request.headers.get("CF-Connecting-IP"));
@@ -36,8 +47,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   const fieldErrors: Record<string, ErrorKey> = {};
   if (!parsed.success) {
     for (const issue of parsed.error.issues) fieldErrors[String(issue.path[0])] ??= issue.message as ErrorKey;
-    return { formError: "fixFields" as ErrorKey, fieldErrors };
   }
+  // Password: required on the website, optional when already signed in through Telegram
+  const password = String(form.get("password") ?? "");
+  if (!user || password) {
+    if (!passwordSchema.safeParse(password).success) fieldErrors.password = "passwordShort";
+    else if (password !== form.get("password2")) fieldErrors.password2 = "passwordMismatch";
+  }
+  if (!parsed.success || Object.keys(fieldErrors).length) return { formError: "fixFields" as ErrorKey, fieldErrors };
+
   const today = toEth(new Date());
   const d = parsed.data;
   const resolved = resolveClass(
@@ -52,30 +70,30 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const db = getDb(env.DB);
-  const taken = await db.query.members.findFirst({ where: eq(schema.members.studentId, d.studentId), columns: { id: true } });
-  if (taken) return { formError: "fixFields" as ErrorKey, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
-
-  try {
-    await db
-      .insert(schema.members)
-      .values({
-        fullName: d.fullName,
-        christianName: d.christianName,
-        gender: d.gender,
-        phone: d.phone,
-        studentId: d.studentId,
-        department: d.department,
-        lang: d.lang,
-        ...resolved.value,
-        registeredYear: today.year,
-        userId: user.id,
-      })
-      .onConflictDoNothing({ target: schema.members.userId });
-  } catch {
-    // Two people sending the same ID at the same moment: the unique index stops the second
+  if (await db.query.members.findFirst({ where: eq(schema.members.studentId, d.studentId), columns: { id: true } })) {
     return { formError: "fixFields" as ErrorKey, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
   }
-  throw redirect("/me?registered=1");
+  const userId = user?.id ?? (await createUser(db, d.fullName));
+  const member = {
+    fullName: d.fullName,
+    christianName: d.christianName,
+    gender: d.gender,
+    phone: d.phone,
+    studentId: d.studentId,
+    department: d.department,
+    lang: d.lang,
+    ...resolved.value,
+  };
+  const error = await createMember(db, userId, member, today.year);
+  if (error === "studentIdTaken") return { formError: "fixFields" as ErrorKey, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
+  if (password) await setPasswordHash(db, userId, await hashPassword(password));
+  if (user) throw redirect("/me?registered=1");
+
+  // New on the website: sign them straight in with the ID and password they just chose
+  const res = await createAuth(env).api.studentLogin({ body: { studentId: d.studentId, password }, headers: request.headers, asResponse: true });
+  const headers = new Headers();
+  for (const cookie of res.headers.getSetCookie()) headers.append("Set-Cookie", cookie);
+  throw redirect(res.ok ? "/me?registered=1" : "/login", { headers });
 }
 
 export default function Register({ loaderData, actionData }: Route.ComponentProps) {
@@ -151,6 +169,11 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
             options={GRADUATION_MONTHS.map((m) => [String(m), tr.months[m - 1]] as [string, string])}
           />
         )}
+        <fieldset className="field password-fields">
+          <legend>{r.passwordTitle} {loaderData.signedIn && <small>{r.passwordOptional}</small>}</legend>
+          <Field label={r.password} hint={r.passwordHint} name="password" type="password" autoComplete="new-password" minLength={8} required={!loaderData.signedIn} error={err("password")} />
+          <Field label={r.password2} name="password2" type="password" autoComplete="new-password" minLength={8} required={!loaderData.signedIn} error={err("password2")} />
+        </fieldset>
         <Choice legend={r.lang} name="lang" error={err("lang")} defaultValue={lang} options={[["om", "Afaan Oromoo"], ["am", "አማርኛ"]]} />
         <Turnstile siteKey={loaderData.turnstileSiteKey} />
         <button type="submit" className="btn btn-primary" disabled={nav.state === "submitting"}>
