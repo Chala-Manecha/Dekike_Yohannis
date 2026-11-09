@@ -1,5 +1,6 @@
 import { Link, redirect } from "react-router";
 import type { Route } from "./+types/songs.new";
+import { PageHead } from "../components/Layout";
 import { SongForm } from "../components/SongForm";
 import { getDb, schema } from "../db";
 import { requirePermission } from "../lib/session.server";
@@ -29,8 +30,7 @@ export default function NewSong({ actionData }: Route.ComponentProps) {
   const { tr } = useT();
   return (
     <section className="page narrow">
-      <p><Link to="/songs">← {tr.songs.title}</Link></p>
-      <h1>{tr.songs.add}</h1>
+      <PageHead back={{ to: "/songs", label: tr.songs.title }} title={tr.songs.add} />
       <SongForm errors={actionData?.errors} />
     </section>
   );

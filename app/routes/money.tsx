@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Link } from "react-router";
 import type { Route } from "./+types/money";
+import { PageHead } from "../components/Layout";
 import { getDb, schema } from "../db";
 import { toEth } from "../lib/ethiopian";
 import { formatEth } from "../lib/i18n";
@@ -40,8 +41,7 @@ export default function Money({ loaderData }: Route.ComponentProps) {
   const { months, balance, finance } = loaderData;
   return (
     <section className="page">
-      <h1>{l.publicTitle}</h1>
-      <p className="intro">{l.publicIntro}</p>
+      <PageHead back={{ to: "/me", label: tr.nav.myPage }} title={l.publicTitle} sub={l.publicIntro} />
       {finance && <p><Link to="/finance/ledger">{l.title} →</Link></p>}
       <div className="money-summary">
         <div className="money-closing"><span>{l.balanceNow}</span><strong>{birr(balance)} {tr.birr}</strong></div>

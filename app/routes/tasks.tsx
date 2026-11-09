@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { Link } from "react-router";
 import type { Route } from "./+types/tasks";
+import { PageHead } from "../components/Layout";
 import { getDb, schema } from "../db";
 import { addDaysIso, isoToEth, todayIso } from "../lib/dates";
 import { formatEth } from "../lib/i18n";
@@ -38,7 +39,7 @@ export default function Tasks({ loaderData }: Route.ComponentProps) {
   const { rows, dept } = loaderData;
   return (
     <section className="page narrow">
-      <h1>{tr.tasks.title}</h1>
+      <PageHead back={{ to: "/dashboard", label: tr.nav.dashboard }} title={tr.tasks.title} />
       {dept && <p className="muted">{tr.serviceDept[dept]}</p>}
       {rows.length === 0 ? <p>{tr.tasks.none}</p> : (
         <ul className="tasks">

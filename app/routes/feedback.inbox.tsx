@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { Form, useNavigation } from "react-router";
 import { z } from "zod";
 import type { Route } from "./+types/feedback.inbox";
+import { PageHead } from "../components/Layout";
 import { getDb, schema } from "../db";
 import { requirePermission } from "../lib/session.server";
 import { useT } from "../lib/use-t";
@@ -52,7 +53,7 @@ export default function FeedbackInbox({ loaderData }: Route.ComponentProps) {
   const nav = useNavigation();
   return (
     <section className="page">
-      <h1>{f.inboxTitle}</h1>
+      <PageHead back={{ to: "/dashboard", label: tr.nav.dashboard }} title={f.inboxTitle} />
       {loaderData.items.length === 0 ? <p>{f.inboxEmpty}</p> : (
         <ul className="feedback-list">
           {loaderData.items.map((i) => (

@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { Form, useNavigation } from "react-router";
 import type { Route } from "./+types/property";
+import { PageHead } from "../components/Layout";
 import { Field } from "../components/Field";
 import { ReceiptInput } from "../components/ReceiptInput";
 import { getDb, schema } from "../db";
@@ -182,7 +183,7 @@ export default function Property({ loaderData, actionData }: Route.ComponentProp
 
   return (
     <section className="page">
-      <h1>{p.title}</h1>
+      <PageHead back={{ to: "/dashboard", label: tr.nav.dashboard }} title={p.title} sub={tr.serviceDept.property} />
       <div className="money-summary">
         {CONDITIONS.map((c) => (
           <div key={c} className={`cond cond--${c}`}><span>{p.conditions[c]}</span><strong>{counts[c]}</strong></div>

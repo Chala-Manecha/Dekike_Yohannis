@@ -1,5 +1,6 @@
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/me.account";
+import { PageHead } from "../components/Layout";
 import { Field } from "../components/Field";
 import { getDb } from "../db";
 import { getPasswordHash, memberByStudentId, setPasswordHash, telegramIdForUser } from "../lib/accounts.server";
@@ -78,8 +79,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
 
   return (
     <section className="page narrow">
-      <p><Link to="/me">← {tr.account.title}</Link></p>
-      <h1>{a.title}</h1>
+      <PageHead back={{ to: "/me", label: tr.nav.myPage }} title={a.title} />
 
       <dl className="facts">
         <dt>{tr.register.studentId}</dt>

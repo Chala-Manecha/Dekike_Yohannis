@@ -53,3 +53,13 @@ export function matchesSearch(q: string, fields: (string | null | undefined)[]) 
     return v.includes(needle) || (compact.length >= 3 && v.replace(/[^a-z0-9]/g, "").includes(compact));
   });
 }
+
+/**
+ * Attendance changes from the event's checklist: who to add and who to remove,
+ * given who was ticked before and who is ticked now (only active members count).
+ */
+export function attendanceDiff(before: string[], ticked: string[], activeIds: Set<string>) {
+  const was = new Set(before);
+  const now = new Set(ticked.filter((id) => activeIds.has(id)));
+  return { add: [...now].filter((id) => !was.has(id)), remove: [...was].filter((id) => !now.has(id)) };
+}

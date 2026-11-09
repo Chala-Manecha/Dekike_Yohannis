@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/finance";
+import { FinanceHead } from "../components/FinanceHead";
 import { getDb, schema } from "../db";
 import { expectedAmount, reviewContributionTransition } from "../lib/contributions";
 import { formatEth, standingLabel } from "../lib/i18n";
@@ -84,14 +85,12 @@ export default function Finance({ loaderData, actionData }: Route.ComponentProps
   const nav = useNavigation();
   return (
     <section className="page wide">
-      <h1>{f.title}</h1>
-      <p className="me-links"><Link to="/finance/ledger">{tr.ledger.title} →</Link><Link to="/finance/month">{f.monthTitle} →</Link>{loaderData.canSettings && <Link to="/finance/settings">{f.settingsTitle} →</Link>}</p>
+      <FinanceHead active="review" toReview={loaderData.queue.length} canSettings={loaderData.canSettings} />
       {actionData?.message && <p className="notice" role="status">{f[actionData.message]}</p>}
       {!loaderData.canReview && <p className="muted">{f.reviewOnlyFinance}</p>}
 
-      <h2>{f.queueTitle}</h2>
       {loaderData.queue.length === 0 ? (
-        <p>{f.queueEmpty}</p>
+        <div className="card empty-state">✅ {f.queueEmpty}</div>
       ) : (
         <ul className="review-list">
           {loaderData.queue.map((c) => {
@@ -120,7 +119,7 @@ export default function Finance({ loaderData, actionData }: Route.ComponentProps
                   <Form method="post" className="review-actions">
                     <input type="hidden" name="id" value={c.id} />
                     <input name="note" placeholder={f.note} maxLength={300} />
-                    <button name="decision" value="approve" className="btn btn-primary btn-sm" disabled={nav.state !== "idle"}>{f.approve}</button>
+                    <button name="decision" value="approve" className="btn btn-green btn-sm" disabled={nav.state !== "idle"}>✓ {f.approve}</button>
                     <button name="decision" value="reject" className="btn btn-quiet btn-sm" disabled={nav.state !== "idle"}>{f.reject}</button>
                   </Form>
                   )}

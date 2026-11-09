@@ -10,6 +10,8 @@ Telegram bot + Cron · Turnstile. Interface in **Afaan Oromoo (default) and Amha
 
 | Area | Who | Where |
 |---|---|---|
+| My dashboard: this month's dues, payments and history, attendance, upcoming events, my responsibility, departments I chose, profile | every member | `/me` |
+| Attendance: tick who came, with search and a live count | members coordinator · leader | `/events/:id?tab=attendance` |
 | Role dashboard: coloured number tiles (each opens the filtered list), payments by department × student/graduate, members by department, open tasks, songs, property, materials, new feedback | every department role (plain members → My page) | `/dashboard` |
 | Upcoming events (from 3 days before), moving photo gallery, dues, where we are (university, church, map links), contacts, Telegram group | everyone | `/` |
 | Contact people shown on the homepage | members coordinator · leader | `/contacts` |
@@ -44,6 +46,8 @@ unique), so "UGR/1234/12" and "ugr 1234-12" are the same person ("already regist
 coordinator on every new registration; approval; a department role given or removed; Finance on every
 payment submitted; the member when Finance approves (thanks) or returns a payment; plus the scheduled
 3-day zikr announcement and unpaid reminders. Builders in `app/lib/notices.ts` (tested).
+**Look**: white pages, blue title bars with a ← Back button, big icon tab buttons per department
+(green = selected), "＋ Add …" forms folded until tapped (`app/components/Layout.tsx`).
 **Lists** (members, Finance month) are one line per person with filter buttons that show counts
 (department, student/graduate, status, departments to serve in) plus search by name, ID or phone.
 **Registration** asks for the university student ID (unique: the same ID can't register twice) and
@@ -144,7 +148,7 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/lib/songs.ts` · `app/lib/property.ts` · `app/lib/search.server.ts` safe search · `app/db/schema.ts` tables · `tests/` 147 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/lib/songs.ts` · `app/lib/property.ts` · `app/lib/search.server.ts` safe search · `app/db/schema.ts` tables · `tests/` 149 tests
 
 **Song recordings** (MP3/M4A/OGG/WAV up to 15 MB) are streamed into private R2 as the raw request body and
 played back members-only with byte ranges, so phones can seek. **On phones** the menu folds behind a

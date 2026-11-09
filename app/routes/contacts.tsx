@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/contacts";
+import { PageHead } from "../components/Layout";
 import { Field } from "../components/Field";
 import { getDb, schema } from "../db";
 import { contactSchema } from "../lib/contacts";
@@ -68,8 +69,7 @@ export default function Contacts({ loaderData, actionData }: Route.ComponentProp
   const { contacts } = loaderData;
   return (
     <section className="page narrow">
-      <p><Link to="/members">← {tr.members.title}</Link></p>
-      <h1>{k.manageTitle}</h1>
+      <PageHead back={{ to: "/members", label: tr.members.title }} title={k.manageTitle} />
       <p className="muted">{k.manageHint}</p>
       {actionData && "ok" in actionData && <p className="notice" role="status">{tr.saved}</p>}
       <details className="panel upload-panel" open={Boolean(errorsFor("new")) || contacts.length === 0 || undefined}>

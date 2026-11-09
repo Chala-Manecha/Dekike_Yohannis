@@ -442,6 +442,23 @@ export const contacts = sqliteTable("contacts", {
   ...timestamps,
 });
 
+/** Who came to an event, ticked by the members department. One row per member per event. */
+export const attendance = sqliteTable(
+  "attendance",
+  {
+    id: id(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    markedBy: text("marked_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("attendance_unique").on(t.eventId, t.memberId), index("attendance_member_idx").on(t.memberId)],
+);
+
 /** Wrong-password counter per student ID (app/lib/login-limit.ts). */
 export const loginAttempts = sqliteTable("login_attempts", {
   key: text("key").primaryKey(),

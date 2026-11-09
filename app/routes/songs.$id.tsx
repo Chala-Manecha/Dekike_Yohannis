@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Form, Link, redirect, useSearchParams } from "react-router";
 import type { Route } from "./+types/songs.$id";
+import { PageHead } from "../components/Layout";
 import { AudioUpload } from "../components/AudioUpload";
 import { SongForm } from "../components/SongForm";
 import { getDb, schema } from "../db";
@@ -55,10 +56,9 @@ export default function Song({ loaderData, actionData }: Route.ComponentProps) {
 
   return (
     <section className="page narrow">
-      <p><Link to="/songs">← {s.title}</Link></p>
+      <PageHead back={{ to: "/songs", label: s.title }} title={editing ? s.edit : song.title} sub={s.langs[song.lang]} />
       {editing ? (
         <>
-          <h1>{s.edit}</h1>
           <SongForm song={song} errors={actionData?.errors} />
           <Form method="post" className="danger-zone" onSubmit={(e) => { if (!confirm(s.confirmDelete)) e.preventDefault(); }}>
             <button className="btn btn-quiet btn-sm" name="intent" value="delete">{tr.remove}</button>
@@ -66,8 +66,6 @@ export default function Song({ loaderData, actionData }: Route.ComponentProps) {
         </>
       ) : (
         <article className="song">
-          <h1>{song.title}</h1>
-          <p className="muted">{s.langs[song.lang]}</p>
           {song.hasAudio && <audio className="song-audio" controls preload="none" src={`/songs/${song.id}/audio`} />}
           {staff && (
             <div className="song-audio-tools">

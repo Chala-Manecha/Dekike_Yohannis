@@ -34,6 +34,9 @@ describe("can", () => {
     expect(who("ledger:write")).toEqual(["finance", "admin"]);
     expect(can("leader", "finance:view")).toBe(true);
   });
+  it("only the members department (and leader/admin) marks attendance", () => {
+    expect(who("attendance:mark")).toEqual(["members_coordinator", "leader", "admin"]);
+  });
   it("the members department (and leader/admin) keeps the contact list", () => {
     expect(who("contact:manage")).toEqual(["members_coordinator", "leader", "admin"]);
   });

@@ -2,6 +2,8 @@ import { desc, eq, isNull, and } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/finance.ledger";
 import { EthDateFields } from "../components/EthDateFields";
+import { FinanceHead } from "../components/FinanceHead";
+import { AddPanel } from "../components/Layout";
 import { Field } from "../components/Field";
 import { ReceiptInput } from "../components/ReceiptInput";
 import { getDb, schema } from "../db";
@@ -118,8 +120,7 @@ export default function Ledger({ loaderData, actionData }: Route.ComponentProps)
 
   return (
     <section className="page wide">
-      <p><Link to="/finance">← {tr.finance.title}</Link></p>
-      <h1>{l.title}</h1>
+      <FinanceHead active="ledger" canSettings={canWrite} sub={l.title} />
 
       <nav className="month-nav" aria-label={l.month}>
         <Link to={`?m=${loaderData.prev}`} aria-label={l.prev}>←</Link>
@@ -139,6 +140,40 @@ export default function Ledger({ loaderData, actionData }: Route.ComponentProps)
       {actionData && "added" in actionData && <p className="notice" role="status">{l.added}</p>}
       {actionData && "voided" in actionData && <p className="notice" role="status">{l.voided}</p>}
 
+      {canWrite && (
+        <AddPanel label={l.add} open={Boolean(actionData && "error" in actionData && actionData.error)}>
+          {actionData && "error" in actionData && actionData.error && <p className="form-error" role="alert">{tr.errors[actionData.error] as string}</p>}
+          <Form method="post" encType="multipart/form-data" className="form" key={actionData && "added" in actionData ? "reset" : "form"}>
+            <fieldset className="field">
+              <legend>{l.direction}</legend>
+              <div className="choices">
+                <label><input type="radio" name="direction" value="out" defaultChecked /> {l.out}</label>
+                <label><input type="radio" name="direction" value="in" /> {l.in}</label>
+              </div>
+            </fieldset>
+            <label className="field">
+              <span>{l.category}</span>
+              <select name="category" aria-invalid={Boolean(err("category"))}>
+                <optgroup label={l.out}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{l.categories[c]}</option>)}</optgroup>
+                <optgroup label={l.in}>{INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{l.categories[c]}</option>)}</optgroup>
+              </select>
+              {err("category") && <span className="field-error">{l.categoryMismatch}</span>}
+            </label>
+            <Field label={`${l.amount} (${tr.birr})`} name="amount" inputMode="numeric" required error={err("amount")} />
+            <EthDateFields value={today} error={err("date")} />
+            <Field label={l.description} hint={l.descriptionHint} name="description" required maxLength={200} error={err("description")} />
+            <label className="field">
+              <span>{l.event} <small>{tr.optional}</small></span>
+              <select name="eventId" defaultValue="">
+                <option value="">—</option>
+                {events.map((e) => <option key={e.id} value={e.id}>{eventTitle(lang, e)} · {formatEth(lang, e.eth)}</option>)}
+              </select>
+            </label>
+            <ReceiptInput label={l.receipt} hint={l.receiptHint} preparing={tr.account.preparing} error={err("receipt")} required={false} />
+            <button className="btn btn-primary" disabled={busy}>{tr.save}</button>
+          </Form>
+        </AddPanel>
+      )}
       <div className="table-wrap">
         <table className="ledger">
           <thead><tr><th>{l.date}</th><th>{l.category}</th><th>{l.description}</th><th className="num">{l.amount}</th><th>{l.receipt}</th>{canWrite && <th />}</tr></thead>
@@ -185,41 +220,6 @@ export default function Ledger({ loaderData, actionData }: Route.ComponentProps)
         </table>
       </div>
 
-      {canWrite && (
-        <section className="panel" aria-labelledby="add-h">
-          <h2 id="add-h">{l.add}</h2>
-          {actionData && "error" in actionData && actionData.error && <p className="form-error" role="alert">{tr.errors[actionData.error] as string}</p>}
-          <Form method="post" encType="multipart/form-data" className="form" key={actionData && "added" in actionData ? "reset" : "form"}>
-            <fieldset className="field">
-              <legend>{l.direction}</legend>
-              <div className="choices">
-                <label><input type="radio" name="direction" value="out" defaultChecked /> {l.out}</label>
-                <label><input type="radio" name="direction" value="in" /> {l.in}</label>
-              </div>
-            </fieldset>
-            <label className="field">
-              <span>{l.category}</span>
-              <select name="category" aria-invalid={Boolean(err("category"))}>
-                <optgroup label={l.out}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{l.categories[c]}</option>)}</optgroup>
-                <optgroup label={l.in}>{INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{l.categories[c]}</option>)}</optgroup>
-              </select>
-              {err("category") && <span className="field-error">{l.categoryMismatch}</span>}
-            </label>
-            <Field label={`${l.amount} (${tr.birr})`} name="amount" inputMode="numeric" required error={err("amount")} />
-            <EthDateFields value={today} error={err("date")} />
-            <Field label={l.description} hint={l.descriptionHint} name="description" required maxLength={200} error={err("description")} />
-            <label className="field">
-              <span>{l.event} <small>{tr.optional}</small></span>
-              <select name="eventId" defaultValue="">
-                <option value="">—</option>
-                {events.map((e) => <option key={e.id} value={e.id}>{eventTitle(lang, e)} · {formatEth(lang, e.eth)}</option>)}
-              </select>
-            </label>
-            <ReceiptInput label={l.receipt} hint={l.receiptHint} preparing={tr.account.preparing} error={err("receipt")} required={false} />
-            <button className="btn btn-primary" disabled={busy}>{tr.save}</button>
-          </Form>
-        </section>
-      )}
     </section>
   );
 }

@@ -1,5 +1,5 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { Form, Link, redirect, useNavigation, useSearchParams } from "react-router";
 import type { Route } from "./+types/me";
 import { ReceiptInput } from "../components/ReceiptInput";
 import { getDb, schema } from "../db";
@@ -10,6 +10,9 @@ import { departmentOf } from "../lib/permissions";
 import { currentDueMonth, monthKey, toEth, type EthMonth } from "../lib/ethiopian";
 import { formatEth, standingLabel } from "../lib/i18n";
 import { requireUser } from "../lib/session.server";
+import { isoToEth, todayIso } from "../lib/dates";
+import { eventTitle } from "../lib/notify";
+import { AddPanel, Card, PageHead, TabBar, type Tab } from "../components/Layout";
 import { markSignedOut } from "../components/TelegramMiniApp";
 import { paymentSubmittedNotices } from "../lib/notices";
 import { notify, recipientsWithRoles } from "../lib/notices.server";
@@ -29,7 +32,20 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const member = await loadMember(db, user.id);
   const url = new URL(request.url);
   const flags = { registered: url.searchParams.has("registered"), sent: url.searchParams.has("sent") };
-  if (!member) return { user, member: null, flags } as const;
+  if (!member) return { view: "none", user, member: null, flags } as const;
+  const profile = {
+    fullName: member.fullName,
+    christianName: member.christianName,
+    studentId: member.studentId,
+    department: member.department,
+    gender: member.gender,
+    phone: member.phone,
+    lang: member.lang,
+    interests: member.interests,
+    registeredYear: member.registeredYear,
+    telegramUsername: user.telegramUsername,
+  };
+  if (member.status !== "active") return { view: "pending", user, member: { status: member.status, fullName: member.fullName }, profile, standing: classInfo(member, toEth(new Date())), flags } as const;
 
   const today = toEth(new Date());
   const standing = classInfo(member, today);
@@ -59,9 +75,41 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .orderBy(desc(schema.contributions.createdAt))
     .limit(24);
 
+  // Events: what's coming, and attendance at past events since joining
+  const iso = todayIso();
+  const joined = todayIso(member.createdAt);
+  const [upcoming, past, attended] = await Promise.all([
+    db
+      .select({ id: schema.events.id, type: schema.events.type, title: schema.events.title, date: schema.events.date, time: schema.events.time, place: schema.events.place })
+      .from(schema.events)
+      .where(and(gte(schema.events.date, iso), eq(schema.events.status, "scheduled")))
+      .orderBy(asc(schema.events.date))
+      .limit(5),
+    db
+      .select({ id: schema.events.id, type: schema.events.type, title: schema.events.title, date: schema.events.date })
+      .from(schema.events)
+      .where(and(lt(schema.events.date, iso), gte(schema.events.date, joined), eq(schema.events.status, "scheduled")))
+      .orderBy(desc(schema.events.date))
+      .limit(24),
+    db.select({ eventId: schema.attendance.eventId }).from(schema.attendance).where(eq(schema.attendance.memberId, member.id)),
+  ]);
+  const came = new Set(attended.map((a) => a.eventId));
+  const myDept = departmentOf(user.role);
+  const openTasks = myDept
+    ? (await db.select({ id: schema.eventTasks.id }).from(schema.eventTasks).where(and(eq(schema.eventTasks.department, myDept), eq(schema.eventTasks.status, "open")))).length
+    : 0;
+
   return {
+    view: "full",
+    current: currentDueMonth(today),
     user,
     member: { status: member.status, fullName: member.fullName },
+    profile,
+    role: user.role,
+    myDept,
+    openTasks,
+    upcoming: upcoming.map((e) => ({ ...e, eth: isoToEth(e.date) })),
+    attendance: past.map((e) => ({ ...e, eth: isoToEth(e.date), present: came.has(e.id) })),
     standing,
     rate,
     hasDepartment: departmentOf(user.role) !== null || user.role === "leader" || user.role === "admin",
@@ -151,64 +199,134 @@ export async function action({ request, context }: Route.ActionArgs) {
 export default function Me({ loaderData, actionData }: Route.ComponentProps) {
   const { lang, tr } = useT();
   const a = tr.account;
+  const md = tr.memberDash;
   const nav = useNavigation();
   const data = loaderData;
+  const [params] = useSearchParams();
 
-  if (!data.member) {
+  if (data.view === "none") {
     return (
       <section className="page narrow">
-        <h1>{a.title}</h1>
-        <p>{a.notRegistered} <Link to="/register">{a.registerNow}</Link></p>
+        <PageHead title={a.title} />
+        <Card>
+          <p>{a.notRegistered}</p>
+          <p><Link to="/register" className="btn btn-primary">{a.registerNow}</Link></p>
+        </Card>
         <SignOut label={tr.nav.signOut} />
       </section>
     );
   }
 
-  const { member } = data;
+  const { member, profile } = data;
   const err = (k: string) => {
     const key = actionData?.fieldErrors?.[k as keyof typeof actionData.fieldErrors];
     return key ? (tr.errors[key] as string) : undefined;
   };
+  const head = (
+    <PageHead
+      title={profile.fullName}
+      sub={<>{standingLabel(lang, data.standing)} · {tr.dept[profile.department]}{profile.studentId ? ` · ${profile.studentId}` : ""}</>}
+      actions={<Link to="/me/account">⚙️ {tr.accountSettings.title}</Link>}
+    />
+  );
+
+  // Not approved yet (or not active): status and profile only
+  if (data.view !== "full") {
+    return (
+      <section className="page wide">
+        {head}
+        {data.flags.registered && <p className="notice" role="status">{a.submitted}</p>}
+        <Card><p className={`status status-${member.status}`}>{a.status[member.status]}</p></Card>
+        <Profile profile={profile} />
+        <SignOut label={tr.nav.signOut} />
+      </section>
+    );
+  }
+
+  const thisMonth = data.months.find((m) => m.year === data.current.year && m.month === data.current.month);
+  const unpaid = data.months.filter((m) => m.status === "unpaid");
+  const attendedCount = data.attendance.filter((x) => x.present).length;
+  const tabs: Tab[] = [
+    { key: "overview", to: "?tab=overview", label: md.overview, icon: "🏠" },
+    { key: "pay", to: "?tab=pay", label: md.payments, icon: "💳", count: unpaid.length, alert: true },
+    { key: "attendance", to: "?tab=attendance", label: md.attendance, icon: "🙋" },
+    { key: "events", to: "?tab=events", label: md.events, icon: "📅", count: data.upcoming.length },
+    { key: "profile", to: "?tab=profile", label: md.profile, icon: "👤" },
+  ];
+  const tab = tabs.some((t) => t.key === params.get("tab")) ? params.get("tab")! : actionData?.error || data.flags.sent ? "pay" : "overview";
+  const statusText = (s: string) => (s === "approved" ? a.paid : s === "pending" ? a.pending : a.unpaid);
 
   return (
-    <section className="page narrow">
-      <h1>{a.title}</h1>
+    <section className="page wide">
+      {head}
       {data.flags.registered && <p className="notice" role="status">{a.submitted}</p>}
       {data.flags.sent && <p className="notice" role="status">{a.sent}</p>}
-      <p className={`status status-${member.status}`}>{a.status[member.status]}</p>
+      <TabBar tabs={tabs} active={tab} />
 
-      {member.status === "active" && "months" in data && (
+      {tab === "overview" && (
         <>
-          <p><strong>{a.yourDue(data.rate)}</strong> · {standingLabel(lang, data.standing)}</p>
-          <p className="me-links">
-            {data.hasDepartment && <Link to="/tasks">{tr.tasks.title}</Link>}
-            <Link to="/feedback">{a.feedbackLink}</Link>
-          </p>
+          <div className="mini-stats">
+            {thisMonth && (
+              <Link to="?tab=pay" className={`mini-stat ${thisMonth.status === "approved" ? "mini-stat--green" : thisMonth.status === "unpaid" ? "mini-stat--red" : ""}`}>
+                <strong>{statusText(thisMonth.status)}</strong>
+                <span>{md.thisMonth(formatEth(lang, thisMonth))} · {data.rate} {tr.birr}</span>
+              </Link>
+            )}
+            <Link to="?tab=attendance" className="mini-stat">
+              <strong>{attendedCount} / {data.attendance.length}</strong>
+              <span>{md.attended}</span>
+            </Link>
+            {data.upcoming[0] && (
+              <Link to="?tab=events" className="mini-stat">
+                <strong>{data.upcoming[0].eth.day} {tr.months[data.upcoming[0].eth.month - 1]}</strong>
+                <span>{eventTitle(lang, data.upcoming[0])}</span>
+              </Link>
+            )}
+            <div className="mini-stat">
+              <strong>{tr.roles[data.role]}</strong>
+              <span>{md.responsibility}{data.myDept ? ` · ${md.openTasks(data.openTasks)}` : ""}</span>
+            </div>
+          </div>
+          <Card>
+            <h2>{tr.register.interests}</h2>
+            {profile.interests.length === 0 ? <p className="muted">—</p> : (
+              <p className="interests">{profile.interests.map((d) => <span key={d} className="badge">{tr.serviceDept[d as keyof typeof tr.serviceDept] ?? d}</span>)}</p>
+            )}
+            <p className="me-links">
+              {data.myDept && <Link to="/tasks">{tr.tasks.title} →</Link>}
+              {data.hasDepartment && !data.myDept && <Link to="/dashboard">{tr.nav.dashboard} →</Link>}
+              <Link to="/money">{tr.ledger.publicTitle} →</Link>
+              <Link to="/feedback">{a.feedbackLink} →</Link>
+            </p>
+          </Card>
+        </>
+      )}
 
-          <h2>{a.monthsTitle}</h2>
-          <ul className="month-grid">
-            {data.months.map((m) => (
-              <li key={`${m.year}-${m.month}`} className={`month month--${m.status}`}>
-                <span>{formatEth(lang, m)}</span>
-                <small>{m.status === "approved" ? a.paid : m.status === "pending" ? a.pending : a.unpaid}</small>
-              </li>
-            ))}
-          </ul>
-
-          <h2>{a.payTitle}</h2>
-          <p className="intro">{a.payIntro}</p>
-          {actionData?.error && <p className="form-error" role="alert">{tr.errors[actionData.error] as string}</p>}
-          <PayForm
-            months={data.months.filter((m) => m.status === "unpaid")}
-            rate={data.rate}
-            err={err}
-            submitting={nav.state === "submitting"}
-          />
-
+      {tab === "pay" && (
+        <>
+          <Card>
+            <h2>{a.monthsTitle}</h2>
+            <p className="muted small">{a.yourDue(data.rate)}</p>
+            <ul className="month-grid">
+              {data.months.map((m) => (
+                <li key={`${m.year}-${m.month}`} className={`month month--${m.status}`}>
+                  <span>{formatEth(lang, m)}</span>
+                  <small>{statusText(m.status)}</small>
+                </li>
+              ))}
+            </ul>
+          </Card>
+          {unpaid.length > 0 && (
+            <AddPanel label={a.payTitle} open={Boolean(actionData?.error)}>
+              <p className="intro">{a.payIntro}</p>
+              {actionData?.error && <p className="form-error" role="alert">{tr.errors[actionData.error] as string}</p>}
+              <PayForm months={unpaid} rate={data.rate} err={err} submitting={nav.state === "submitting"} />
+            </AddPanel>
+          )}
           {data.history.length > 0 && (
-            <>
+            <Card>
               <h2>{a.historyTitle}</h2>
-              <ul className="history">
+              <ul className="history plain">
                 {data.history.map((c) => (
                   <li key={c.id}>
                     <div>
@@ -220,12 +338,85 @@ export default function Me({ loaderData, actionData }: Route.ComponentProps) {
                   </li>
                 ))}
               </ul>
-            </>
+            </Card>
           )}
         </>
       )}
+
+      {tab === "attendance" && (
+        <Card>
+          <h2>{md.attendance} <span className="muted">({attendedCount} / {data.attendance.length})</span></h2>
+          {data.attendance.length === 0 ? <p className="muted">{md.noAttendance}</p> : (
+            <ul className="att-list">
+              {data.attendance.map((x) => (
+                <li key={x.id} className={x.present ? "is-present" : ""}>
+                  <span aria-hidden="true">{x.present ? "✅" : "⬜"}</span>
+                  <span>{eventTitle(lang, x)}</span>
+                  <span className="muted small">{formatEth(lang, x.eth)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {tab === "events" && (
+        data.upcoming.length === 0 ? <Card><p className="muted">{tr.events.none}</p></Card> : (
+          <ul className="event-rows">
+            {data.upcoming.map((ev) => (
+              <li key={ev.id}>
+                <div className={`event-row event-row--${ev.type}`}>
+                  <span className="event-date"><b>{ev.eth.day}</b><small>{tr.months[ev.eth.month - 1]}</small></span>
+                  <span className="event-main">
+                    <strong>{eventTitle(lang, ev)}</strong>
+                    <span className="muted small">{tr.events.types[ev.type]}{ev.time ? ` · ${ev.time}` : ""}{ev.place ? ` · ${ev.place}` : ""}</span>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+
+      {tab === "profile" && <Profile profile={profile} />}
+
       <SignOut label={tr.nav.signOut} />
     </section>
+  );
+}
+
+type ProfileData = {
+  fullName: string;
+  christianName: string | null;
+  studentId: string | null;
+  department: "cs" | "it" | "ee";
+  gender: "male" | "female";
+  phone: string;
+  lang: "om" | "am";
+  interests: string[];
+  registeredYear: number;
+  telegramUsername: string | null;
+};
+
+function Profile({ profile }: { profile: ProfileData }) {
+  const { tr } = useT();
+  const r = tr.register;
+  return (
+    <Card>
+      <h2>{tr.memberDash.profile}</h2>
+      <dl className="kv">
+        <dt>{r.fullName}</dt><dd>{profile.fullName}</dd>
+        <dt>{r.christianName}</dt><dd>{profile.christianName ?? "—"}</dd>
+        <dt>{r.studentId}</dt><dd>{profile.studentId ?? "—"}</dd>
+        <dt>{r.department}</dt><dd>{tr.dept[profile.department]}</dd>
+        <dt>{r.gender}</dt><dd>{profile.gender === "female" ? r.female : r.male}</dd>
+        <dt>{r.phone}</dt><dd>{profile.phone}</dd>
+        <dt>Telegram</dt><dd>{profile.telegramUsername ? `@${profile.telegramUsername}` : "—"}</dd>
+        <dt>{r.lang}</dt><dd>{profile.lang === "am" ? "አማርኛ" : "Afaan Oromoo"}</dd>
+        <dt>{tr.memberDash.since}</dt><dd>{profile.registeredYear}</dd>
+      </dl>
+      <p><Link to="/me/account" className="btn btn-quiet btn-sm">⚙️ {tr.accountSettings.title}</Link></p>
+    </Card>
   );
 }
 
@@ -278,10 +469,8 @@ function PayForm({
 }
 
 function SignOut({ label }: { label: string }) {
-  const { tr } = useT();
   return (
     <>
-    <p className="me-links"><Link to="/me/account">{tr.accountSettings.title} →</Link><Link to="/money">{tr.ledger.publicTitle} →</Link></p>
     <Form method="post" action="/logout" className="signout" onSubmit={markSignedOut}>
       <button className="btn btn-quiet">{label}</button>
     </Form>

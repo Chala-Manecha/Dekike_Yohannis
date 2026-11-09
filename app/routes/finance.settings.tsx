@@ -1,6 +1,7 @@
 import { Form, Link, useNavigation } from "react-router";
 import { z } from "zod";
 import type { Route } from "./+types/finance.settings";
+import { FinanceHead } from "../components/FinanceHead";
 import { getDb } from "../db";
 import { getDues, setSetting } from "../lib/settings.server";
 import { requirePermission } from "../lib/session.server";
@@ -31,9 +32,9 @@ export default function FinanceSettings({ loaderData, actionData }: Route.Compon
   const f = tr.finance;
   const nav = useNavigation();
   return (
-    <section className="page narrow">
-      <p><Link to="/finance">← {f.title}</Link></p>
-      <h1>{f.settingsTitle}</h1>
+    <section className="page wide">
+      <FinanceHead active="settings" canSettings sub={f.settingsTitle} />
+      <div className="card narrow-card">
       <p className="intro">{f.settingsIntro}</p>
       {actionData?.ok === true && <p className="notice" role="status">{tr.saved}</p>}
       {actionData?.ok === false && <p className="form-error" role="alert">{tr.errors.amount}</p>}
@@ -42,6 +43,7 @@ export default function FinanceSettings({ loaderData, actionData }: Route.Compon
         <label className="field"><span>{f.graduateRate}</span><input name="graduate" type="number" min={0} inputMode="numeric" defaultValue={loaderData.dues.graduate} required /></label>
         <button className="btn btn-primary" disabled={nav.state !== "idle"}>{tr.save}</button>
       </Form>
+      </div>
     </section>
   );
 }

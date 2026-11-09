@@ -85,6 +85,13 @@
       "when": 1794262228948,
       "tag": "0011_student_id_key",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794266556036,
+      "tag": "0012_attendance",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, or, type SQL } from "drizzle-orm";
 import { Form, Link } from "react-router";
 import type { Route } from "./+types/songs";
+import { PageHead } from "../components/Layout";
 import { getDb, schema } from "../db";
 import { memberAccess } from "../lib/access.server";
 import { contains } from "../lib/search.server";
@@ -62,7 +63,7 @@ export default function Songs({ loaderData }: Route.ComponentProps) {
   if (!loaderData.allowed) {
     return (
       <section className="page narrow">
-        <h1>{s.title}</h1>
+        <PageHead back={{ to: "/me", label: tr.nav.myPage }} title={s.title} />
         <p>{tr.feedback.onlyMembers}</p>
       </section>
     );
@@ -70,7 +71,8 @@ export default function Songs({ loaderData }: Route.ComponentProps) {
   const { songs, staff, q, lang, next } = loaderData;
   return (
     <section className="page">
-      <h1>{s.title}</h1>
+      <PageHead back={{ to: staff ? "/dashboard" : "/me", label: staff ? tr.nav.dashboard : tr.nav.myPage }} title={s.title}
+        actions={staff ? <Link to="/songs/new">＋ {s.add}</Link> : undefined} />
       {next && (
         <section className="panel next-songs" aria-labelledby="next-songs-h">
           <h2 id="next-songs-h">{s.nextEvent(eventTitle(uiLang, next), formatEth(uiLang, next.eth))}</h2>
@@ -79,7 +81,6 @@ export default function Songs({ loaderData }: Route.ComponentProps) {
           </ol>
         </section>
       )}
-      {staff && <p><Link to="/songs/new" className="btn btn-primary btn-sm">{s.add}</Link></p>}
       <Form method="get" className="filters" role="search">
         <input type="search" name="q" defaultValue={q} placeholder={s.search} aria-label={s.search} />
         <select name="lang" defaultValue={lang} aria-label={s.lang}>

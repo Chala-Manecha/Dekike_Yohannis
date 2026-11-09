@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull, or, type SQL } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/materials";
+import { PageHead } from "../components/Layout";
 import { MaterialUpload } from "../components/MaterialUpload";
 import { ACADEMIC_DEPARTMENTS } from "../config";
 import { getDb, schema } from "../db";
@@ -135,8 +136,7 @@ export default function Materials({ loaderData }: Route.ComponentProps) {
 
   return (
     <section className="page">
-      <h1>{m.title}</h1>
-      <p className="intro">{m.intro}</p>
+      <PageHead back={{ to: reviewer ? "/dashboard" : "/me", label: reviewer ? tr.nav.dashboard : tr.nav.myPage }} title={m.title} sub={m.intro} />
 
       {reviewer && pending.length > 0 && (
         <section className="panel review-queue" aria-labelledby="queue-h">

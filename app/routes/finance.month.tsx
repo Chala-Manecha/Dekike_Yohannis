@@ -1,4 +1,6 @@
-import { Form, Link, useSearchParams } from "react-router";
+import { Form, useSearchParams } from "react-router";
+import { FinanceHead } from "../components/FinanceHead";
+import { can } from "../lib/permissions";
 import type { Route } from "./+types/finance.month";
 import { Chips } from "../components/Chips";
 import { ACADEMIC_DEPARTMENTS } from "../config";
@@ -20,13 +22,13 @@ function parseMonth(v: string | null, fallback: EthMonth): EthMonth {
 /** Every active member's dues for one month, filterable by department, student/graduate and status. */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  await requirePermission(request, env, "finance:view");
+  const user = await requirePermission(request, env, "finance:view");
   const today = toEth(new Date());
   const current = currentDueMonth(today);
   const selected = parseMonth(new URL(request.url).searchParams.get("m"), current);
   const { rows, collected } = await monthPayRows(getDb(env.DB), selected, today);
   const options = Array.from({ length: 12 }, (_, i) => addMonths(current, -i));
-  return { selected, options, rows: rows.sort((a, b) => a.fullName.localeCompare(b.fullName)), collected };
+  return { selected, options, rows: rows.sort((a, b) => a.fullName.localeCompare(b.fullName)), collected, canSettings: can(user.role, "dues:set") };
 }
 
 const STATUSES = ["unpaid", "pending", "approved"] as const;
@@ -51,8 +53,8 @@ export default function FinanceMonth({ loaderData }: Route.ComponentProps) {
 
   return (
     <section className="page wide">
-      <p><Link to="/finance">← {f.title}</Link></p>
-      <h1>{f.monthTitle}: {formatEth(lang, selected)}</h1>
+      <FinanceHead active="month" canSettings={loaderData.canSettings} sub={`${f.monthTitle}: ${formatEth(lang, selected)}`} />
+      <div className="card filter-card">
       <Form method="get" className="list-tools">
         {[...params.entries()].filter(([k]) => k !== "m" && k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         <select name="m" defaultValue={`${selected.year}-${selected.month}`} aria-label={f.chooseMonth}>
@@ -62,8 +64,10 @@ export default function FinanceMonth({ loaderData }: Route.ComponentProps) {
         <button className="btn btn-quiet btn-sm">{f.show}</button>
       </Form>
 
-      <div className="tiles">
-        <div className="tile tile--green"><strong>{collected.toLocaleString("en-US")} {tr.birr}</strong><span>{d.collected}</span></div>
+      <div className="mini-stats">
+        <div className="mini-stat mini-stat--green"><strong>{collected.toLocaleString("en-US")} {tr.birr}</strong><span>{d.collected}</span></div>
+        <div className="mini-stat"><strong>{all.filter((m) => m.status === "approved").length} / {all.length}</strong><span>{d.paid}</span></div>
+        <div className="mini-stat mini-stat--red"><strong>{all.filter((m) => m.status === "unpaid").length}</strong><span>{d.unpaid}</span></div>
       </div>
 
       <Chips label={tr.members.status} param="status" value={status} allLabel={tr.members.all}
@@ -72,6 +76,7 @@ export default function FinanceMonth({ loaderData }: Route.ComponentProps) {
         options={ACADEMIC_DEPARTMENTS.map((x) => [x, tr.dept[x]])} counts={countBy(byDept, ACADEMIC_DEPARTMENTS, (m) => m.department)} />
       <Chips label={tr.members.standing} param="standing" value={standing} allLabel={tr.members.all}
         options={[["student", d.students], ["graduate", d.graduates]]} counts={countBy(byStanding, ["student", "graduate"] as const, (m) => m.kind)} />
+      </div>
 
       <div className="table-wrap">
         <table className="table-oneline">

@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { Chips } from "../components/Chips";
+import { PageHead } from "../components/Layout";
 import { ACADEMIC_DEPARTMENTS } from "../config";
 import { countBy, matchesSearch, pickParam } from "../lib/dashboard";
 import type { Route } from "./+types/members";
@@ -122,10 +123,11 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
 
   return (
     <section className="page wide">
-      <h1>{t.title}</h1>
+      <PageHead back={{ to: "/dashboard", label: tr.nav.dashboard }} title={t.title} sub={tr.serviceDept.members} />
       {loaderData.canContacts && <p><Link to="/contacts">{tr.contacts.manageTitle} →</Link></p>}
       {actionData?.message && <p className={actionData.message === "roleDenied" ? "form-error" : "notice"} role="status">{t[actionData.message]}</p>}
 
+      <div className="card filter-card">
       <div className="chips" role="group" aria-label={t.status}>
         <Link to="?status=active" className="chip" aria-current={status === "active"}>{t.activeTitle} <b>{loaderData.active.length}</b></Link>
         {canReview && (
@@ -146,8 +148,9 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
         options={[["student", d.students], ["graduate", d.graduates]]} counts={countBy(byStanding, ["student", "graduate"] as const, (m) => m.standing.kind)} />
       <Chips label={tr.register.interests} param="want" value={want} allLabel={t.all}
         options={SERVICE_DEPARTMENTS.map((x) => [x, tr.serviceDept[x]])} counts={{ ...countBy(byWant.flatMap((m) => m.interests.map((i) => ({ i }))), SERVICE_DEPARTMENTS, (r) => r.i), all: byWant.length }} />
+      </div>
 
-      <h2>{status === "pending" ? t.pendingTitle : t.activeTitle} <span className="muted">({rows.length})</span></h2>
+      <h2 className="list-title">{status === "pending" ? t.pendingTitle : t.activeTitle} <span className="muted">({rows.length})</span></h2>
       {rows.length === 0 ? <p className="muted">{status === "pending" ? t.pendingEmpty : t.none}</p> : (
         <div className="table-wrap">
           <table className="table-oneline">

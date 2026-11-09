@@ -1,5 +1,6 @@
 import { and, asc, eq, gt, lt, max } from "drizzle-orm";
-import { Form, Link, useNavigation } from "react-router";
+import { useState } from "react";
+import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { z } from "zod";
 import type { Route } from "./+types/events.$id";
 import { EthDateFields } from "../components/EthDateFields";
@@ -11,6 +12,8 @@ import { formatEth } from "../lib/i18n";
 import { eventTitle, planReschedule } from "../lib/notify";
 import { enqueue, loadPlanMembers } from "../lib/notify.server";
 import { can, canWorkTask, departmentOf, SERVICE_DEPARTMENTS, type ServiceDepartment } from "../lib/permissions";
+import { attendanceDiff, matchesSearch } from "../lib/dashboard";
+import { AddPanel, Card, PageHead, TabBar, type Tab } from "../components/Layout";
 import { requireUser } from "../lib/session.server";
 import { useT } from "../lib/use-t";
 
@@ -43,6 +46,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     .innerJoin(schema.songs, eq(schema.songs.id, schema.eventSongs.songId))
     .where(eq(schema.eventSongs.eventId, event.id))
     .orderBy(asc(schema.eventSongs.sort));
+  const canAttendance = can(a.user.role, "attendance:mark");
+  const attendance = canAttendance
+    ? await Promise.all([
+        db
+          .select({ id: schema.members.id, fullName: schema.members.fullName, studentId: schema.members.studentId, department: schema.members.department })
+          .from(schema.members)
+          .where(eq(schema.members.status, "active"))
+          .orderBy(asc(schema.members.fullName)),
+        db.select({ memberId: schema.attendance.memberId }).from(schema.attendance).where(eq(schema.attendance.eventId, event.id)),
+      ]).then(([members, present]) => ({ members, present: present.map((p) => p.memberId) }))
+    : null;
   const allSongs = songsManage
     ? await db.select({ id: schema.songs.id, title: schema.songs.title }).from(schema.songs).orderBy(asc(schema.songs.title)).limit(1000)
     : [];
@@ -53,6 +67,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     tasks: visibleTasks.map((t) => ({ ...t, canWork: canWorkTask(a.user.role, t.department) })),
     perms: { manage: a.manage, program: a.program, assign: a.assign, photos: can(a.user.role, "photo:manage"), songs: songsManage },
     eventSongs,
+    attendance,
     allSongs: allSongs.filter((x) => !eventSongs.some((e) => e.songId === x.id)),
     created: new URL(request.url).searchParams.has("created"),
   };
@@ -148,6 +163,22 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return { ok: true };
   }
 
+  if (intent === "attendance") {
+    if (!can(a.user.role, "attendance:mark")) deny();
+    const active = await db.select({ id: schema.members.id }).from(schema.members).where(eq(schema.members.status, "active"));
+    const before = await db.select({ memberId: schema.attendance.memberId }).from(schema.attendance).where(eq(schema.attendance.eventId, event.id));
+    const { add, remove } = attendanceDiff(before.map((b) => b.memberId), form.getAll("present").map(String), new Set(active.map((m) => m.id)));
+    const stmts = [
+      ...add.map((memberId) => db.insert(schema.attendance).values({ eventId: event.id, memberId, markedBy: a.user.id }).onConflictDoNothing()),
+      ...remove.map((memberId) => db.delete(schema.attendance).where(and(eq(schema.attendance.eventId, event.id), eq(schema.attendance.memberId, memberId)))),
+    ];
+    for (let i = 0; i < stmts.length; i += 50) {
+      const chunk = stmts.slice(i, i + 50);
+      if (chunk.length) await db.batch(chunk as [(typeof chunk)[number], ...typeof chunk]);
+    }
+    return { message: "attendanceSaved" as const };
+  }
+
   if (intent === "doneTask") {
     const task = await db.query.eventTasks.findFirst({ where: eq(schema.eventTasks.id, String(form.get("id"))) });
     if (!task || task.eventId !== event.id) throw new Response("Not found", { status: 404 });
@@ -164,31 +195,47 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
   const e = tr.events;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const { event, eth, program, tasks, perms, eventSongs, allSongs } = loaderData;
+  const { event, eth, program, tasks, perms, eventSongs, allSongs, attendance } = loaderData;
   const msg = actionData && "message" in actionData ? actionData.message : null;
   const err = actionData && "error" in actionData ? actionData.error : null;
+  const [params] = useSearchParams();
+
+  const tabs: Tab[] = [
+    { key: "program", to: "?tab=program", label: e.programTitle, icon: "📋", count: program.length },
+    { key: "tasks", to: "?tab=tasks", label: e.tasksTitle, icon: "✅", count: tasks.filter((t) => t.status === "open").length, alert: true },
+    { key: "songs", to: "?tab=songs", label: tr.songs.forEvent, icon: "🎵", count: eventSongs.length },
+    ...(attendance ? [{ key: "attendance", to: "?tab=attendance", label: e.attendance, icon: "🙋", count: attendance.present.length }] : []),
+    ...(perms.manage && event.status === "scheduled" ? [{ key: "edit", to: "?tab=edit", label: e.edit, icon: "✏️" }] : []),
+  ];
+  const tab = tabs.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "program";
 
   return (
-    <section className="page">
-      <p><Link to={perms.manage ? "/events" : "/tasks"}>← {perms.manage ? e.title : tr.tasks.title}</Link></p>
-      <p><span className={`badge badge--${event.type}`}>{e.types[event.type]}</span></p>
-      <h1>{eventTitle(lang, event)}</h1>
-      <p className="lead-line">
-        {formatEth(lang, eth)}{event.time ? ` · ${event.time}` : ""}{event.place ? ` · ${event.place}` : ""}
-        {event.status === "cancelled" && <span className="pill pill--rejected"> {e.cancelled}</span>}
-      </p>
-      {event.type === "zikr" && event.dueYear && event.dueMonth && (
-        <p className="muted">{e.dueMonth(formatEth(lang, { year: event.dueYear, month: event.dueMonth }))}</p>
-      )}
-      {event.description && <p>{event.description}</p>}
-      {perms.photos && <p><Link to={`/events/${event.id}/photos`} className="btn btn-quiet btn-sm">{tr.gallery.manageTitle}</Link></p>}
+    <section className="page wide">
+      <PageHead
+        back={{ to: perms.manage ? "/events" : "/tasks", label: perms.manage ? e.title : tr.tasks.title }}
+        title={eventTitle(lang, event)}
+        sub={
+          <>
+            <span className={`badge badge--${event.type}`}>{e.types[event.type]}</span>{" "}
+            {formatEth(lang, eth)}{event.time ? ` · ${event.time}` : ""}{event.place ? ` · ${event.place}` : ""}
+            {event.status === "cancelled" && <> · <strong>{e.cancelled}</strong></>}
+          </>
+        }
+        actions={perms.photos ? <Link to={`/events/${event.id}/photos`}>📷 {tr.gallery.title}</Link> : undefined}
+      />
       {loaderData.created && <p className="notice" role="status">{e.created}</p>}
       {msg === "updated" && <p className="notice" role="status">{e.updated}</p>}
+      {msg === "attendanceSaved" && <p className="notice" role="status">{tr.saved}</p>}
       {err && <p className="form-error" role="alert">{err === "badDate" ? e.badDate : tr.errors.fixFields}</p>}
 
-      <div className="two-col">
-        <div>
-          <h2>{e.programTitle}</h2>
+      <TabBar tabs={tabs} active={tab} />
+
+      {tab === "program" && (
+        <Card>
+          {event.type === "zikr" && event.dueYear && event.dueMonth && (
+            <p className="muted">{e.dueMonth(formatEth(lang, { year: event.dueYear, month: event.dueMonth }))}</p>
+          )}
+          {event.description && <p>{event.description}</p>}
           {program.length === 0 ? <p className="muted">{e.programHint}</p> : (
             <ol className="program">
               {program.map((p) => (
@@ -206,15 +253,56 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
             </ol>
           )}
           {perms.program && (
-            <Form method="post" className="inline-form">
-              <input type="hidden" name="intent" value="addPart" />
-              <input name="part" placeholder={e.part} required maxLength={120} />
-              <input name="person" placeholder={e.person} maxLength={120} />
-              <button className="btn btn-quiet btn-sm" disabled={busy}>{e.addPart}</button>
-            </Form>
+            <AddPanel label={e.addPart}>
+              <Form method="post" className="inline-form">
+                <input type="hidden" name="intent" value="addPart" />
+                <input name="part" placeholder={e.part} required maxLength={120} />
+                <input name="person" placeholder={e.person} maxLength={120} />
+                <button className="btn btn-primary btn-sm" disabled={busy}>{tr.save}</button>
+              </Form>
+            </AddPanel>
           )}
+        </Card>
+      )}
 
-          <h2>{tr.songs.forEvent}</h2>
+      {tab === "tasks" && (
+        <Card>
+          {tasks.length === 0 ? <p className="muted">{tr.tasks.none}</p> : (
+            <ul className="tasks">
+              {tasks.map((t) => (
+                <li key={t.id} className={t.status === "done" ? "is-done" : ""}>
+                  <span className="badge">{tr.serviceDept[t.department]}</span>
+                  <span className="task-text">{t.task}</span>
+                  {t.status === "done" ? (
+                    <span className="pill pill--approved">{tr.tasks.done}</span>
+                  ) : t.canWork ? (
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="doneTask" />
+                      <input type="hidden" name="id" value={t.id} />
+                      <button className="btn btn-green btn-sm" disabled={busy}>{tr.tasks.markDone}</button>
+                    </Form>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          {perms.assign && (
+            <AddPanel label={e.assign}>
+              <Form method="post" className="inline-form">
+                <input type="hidden" name="intent" value="addTask" />
+                <select name="department" aria-label={e.assignTo} defaultValue="preparation">
+                  {SERVICE_DEPARTMENTS.map((d: ServiceDepartment) => <option key={d} value={d}>{tr.serviceDept[d]}</option>)}
+                </select>
+                <input name="task" placeholder={e.task} required minLength={2} maxLength={300} />
+                <button className="btn btn-primary btn-sm" disabled={busy}>{e.assign}</button>
+              </Form>
+            </AddPanel>
+          )}
+        </Card>
+      )}
+
+      {tab === "songs" && (
+        <Card>
           {eventSongs.length === 0 ? <p className="muted">{tr.songs.noneForEvent}</p> : (
             <ol className="program">
               {eventSongs.map((sg, i) => (
@@ -233,66 +321,75 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
             </ol>
           )}
           {perms.songs && allSongs.length > 0 && (
-            <Form method="post" className="inline-form">
-              <input type="hidden" name="intent" value="addSong" />
-              <select name="songId" aria-label={tr.songs.addToEvent}>
-                {allSongs.map((sg) => <option key={sg.id} value={sg.id}>{sg.title}</option>)}
-              </select>
-              <button className="btn btn-quiet btn-sm" disabled={busy}>{tr.songs.addToEvent}</button>
-            </Form>
+            <AddPanel label={tr.songs.addToEvent}>
+              <Form method="post" className="inline-form">
+                <input type="hidden" name="intent" value="addSong" />
+                <select name="songId" aria-label={tr.songs.addToEvent}>
+                  {allSongs.map((sg) => <option key={sg.id} value={sg.id}>{sg.title}</option>)}
+                </select>
+                <button className="btn btn-primary btn-sm" disabled={busy}>{tr.save}</button>
+              </Form>
+            </AddPanel>
           )}
+        </Card>
+      )}
 
-          <h2>{e.tasksTitle}</h2>
-          {tasks.length === 0 ? <p className="muted">{tr.tasks.none}</p> : (
-            <ul className="tasks">
-              {tasks.map((t) => (
-                <li key={t.id} className={t.status === "done" ? "is-done" : ""}>
-                  <span className="badge">{tr.serviceDept[t.department]}</span>
-                  <span className="task-text">{t.task}</span>
-                  {t.status === "done" ? (
-                    <span className="pill pill--approved">{tr.tasks.done}</span>
-                  ) : t.canWork ? (
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="doneTask" />
-                      <input type="hidden" name="id" value={t.id} />
-                      <button className="btn btn-quiet btn-sm" disabled={busy}>{tr.tasks.markDone}</button>
-                    </Form>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-          {perms.assign && (
-            <Form method="post" className="inline-form">
-              <input type="hidden" name="intent" value="addTask" />
-              <select name="department" aria-label={e.assignTo} defaultValue="preparation">
-                {SERVICE_DEPARTMENTS.map((d: ServiceDepartment) => <option key={d} value={d}>{tr.serviceDept[d]}</option>)}
-              </select>
-              <input name="task" placeholder={e.task} required minLength={2} maxLength={300} />
-              <button className="btn btn-quiet btn-sm" disabled={busy}>{e.assign}</button>
-            </Form>
-          )}
-        </div>
+      {tab === "attendance" && attendance && <Attendance members={attendance.members} present={attendance.present} busy={busy} />}
 
-        {perms.manage && event.status === "scheduled" && (
-          <div className="panel">
-            <h2>{e.edit}</h2>
-            <Form method="post" className="form">
-              <input type="hidden" name="intent" value="update" />
-              <Field label={e.titleLabel} hint={event.type === "zikr" ? e.titleHint : undefined} name="title" defaultValue={event.title ?? ""} />
-              <EthDateFields value={eth} />
-              <Field label={e.time} hint={e.timeHint} name="time" defaultValue={event.time ?? ""} />
-              <Field label={e.place} name="place" defaultValue={event.place ?? ""} />
-              <label className="field"><span>{e.description}</span><textarea name="description" rows={3} defaultValue={event.description ?? ""} /></label>
-              <button className="btn btn-primary" disabled={busy}>{tr.save}</button>
-            </Form>
-            <Form method="post" className="danger-zone">
-              <input type="hidden" name="intent" value="cancel" />
-              <button className="btn btn-quiet btn-sm" disabled={busy}>{e.cancelEvent}</button>
-            </Form>
-          </div>
-        )}
-      </div>
+      {tab === "edit" && perms.manage && event.status === "scheduled" && (
+        <Card>
+          <Form method="post" className="form">
+            <input type="hidden" name="intent" value="update" />
+            <Field label={e.titleLabel} hint={event.type === "zikr" ? e.titleHint : undefined} name="title" defaultValue={event.title ?? ""} />
+            <EthDateFields value={eth} />
+            <Field label={e.time} hint={e.timeHint} name="time" defaultValue={event.time ?? ""} />
+            <Field label={e.place} name="place" defaultValue={event.place ?? ""} />
+            <label className="field"><span>{e.description}</span><textarea name="description" rows={3} defaultValue={event.description ?? ""} /></label>
+            <button className="btn btn-primary" disabled={busy}>{tr.save}</button>
+          </Form>
+          <Form method="post" className="danger-zone" onSubmit={(ev) => { if (!confirm(e.cancelEvent + "?")) ev.preventDefault(); }}>
+            <input type="hidden" name="intent" value="cancel" />
+            <button className="btn btn-quiet btn-sm" disabled={busy}>{e.cancelEvent}</button>
+          </Form>
+        </Card>
+      )}
     </section>
+  );
+}
+
+/** Tick who came; a search box and a live count. Saves the whole list at once. */
+function Attendance({ members, present, busy }: { members: { id: string; fullName: string; studentId: string | null; department: "cs" | "it" | "ee" }[]; present: string[]; busy: boolean }) {
+  const { tr } = useT();
+  const e = tr.events;
+  const [q, setQ] = useState("");
+  const [ticked, setTicked] = useState(() => new Set(present));
+  const toggle = (id: string) => setTicked((s) => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    return n;
+  });
+  return (
+    <Card>
+      <Form method="post">
+        <input type="hidden" name="intent" value="attendance" />
+        <div className="attendance-head">
+          <strong>{e.presentCount(ticked.size, members.length)}</strong>
+          <input type="search" value={q} onChange={(ev) => setQ(ev.currentTarget.value)} placeholder={tr.members.search} aria-label={tr.members.search} />
+        </div>
+        <ul className="attendance-list">
+          {members.map((m) => (
+            <li key={m.id} hidden={!matchesSearch(q, [m.fullName, m.studentId])}>
+              <label className={ticked.has(m.id) ? "is-present" : ""}>
+                <input type="checkbox" name="present" value={m.id} checked={ticked.has(m.id)} onChange={() => toggle(m.id)} />
+                <span>{m.fullName}</span>
+                <small className="muted">{m.studentId ?? ""} · {tr.dept[m.department]}</small>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <button className="btn btn-green" disabled={busy}>{tr.save}</button>
+      </Form>
+    </Card>
   );
 }

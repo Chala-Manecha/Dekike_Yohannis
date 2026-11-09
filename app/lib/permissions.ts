@@ -57,6 +57,7 @@ export const PERMISSIONS = {
   "photo:manage": ["admin", "leader", "preparation"],
   "ledger:write": ["admin", "finance"],
   "contact:manage": ["admin", "leader", "members_coordinator"],
+  "attendance:mark": ["admin", "leader", "members_coordinator"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

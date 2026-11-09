@@ -33,3 +33,12 @@ describe("filters", () => {
     expect(matchesSearch("", ["x"])).toBe(true);
   });
 });
+
+import { attendanceDiff } from "../app/lib/dashboard";
+
+describe("attendanceDiff", () => {
+  it("adds newly ticked and removes unticked members, ignoring unknown ids", () => {
+    expect(attendanceDiff(["a", "b"], ["b", "c", "zzz"], new Set(["a", "b", "c"]))).toEqual({ add: ["c"], remove: ["a"] });
+    expect(attendanceDiff([], [], new Set())).toEqual({ add: [], remove: [] });
+  });
+});

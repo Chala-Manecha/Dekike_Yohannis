@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/events.$id.photos";
+import { PageHead } from "../components/Layout";
 import { PhotoUploader } from "../components/PhotoUploader";
 import { getDb, schema } from "../db";
 import { isoToEth } from "../lib/dates";
@@ -56,9 +57,7 @@ export default function EventPhotos({ loaderData }: Route.ComponentProps) {
 
   return (
     <section className="page">
-      <p><Link to={`/events/${event.id}`}>← {eventTitle(lang, event)}</Link></p>
-      <h1>{g.manageTitle}</h1>
-      <p className="lead-line">{eventTitle(lang, event)} · {formatEth(lang, eth)}</p>
+      <PageHead back={{ to: `/events/${event.id}`, label: eventTitle(lang, event) }} title={g.manageTitle} sub={`${eventTitle(lang, event)} · ${formatEth(lang, eth)}`} />
 
       <PhotoUploader
         uploadUrl={`/events/${event.id}/photos/upload`}
