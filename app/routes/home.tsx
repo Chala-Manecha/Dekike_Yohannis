@@ -1,12 +1,14 @@
+import { desc, eq } from "drizzle-orm";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/home";
 import type { loader as rootLoader } from "../root";
 import { GROUP } from "../config";
-import { getDb } from "../db";
+import { getDb, schema } from "../db";
 import { daysBetween, isoToEth, todayIso } from "../lib/dates";
 import { homeWindow } from "../lib/events";
 import { formatEth } from "../lib/i18n";
 import { eventTitle } from "../lib/notify";
+import { HOME_GALLERY_MAX, marqueeSeconds, photoUrl } from "../lib/photos";
 import { scheduledEvents } from "../lib/notify.server";
 import { getDues } from "../lib/settings.server";
 import { useT } from "../lib/use-t";
@@ -19,8 +21,18 @@ export async function loader({ context }: Route.LoaderArgs) {
   const db = getDb(context.cloudflare.env.DB);
   const today = todayIso();
   const { from, to } = homeWindow(today);
-  const events = await scheduledEvents(db, from, to);
+  const [events, photos] = await Promise.all([
+    scheduledEvents(db, from, to),
+    db
+      .select({ id: schema.photos.id, width: schema.photos.width, height: schema.photos.height, caption: schema.photos.caption, type: schema.events.type, title: schema.events.title })
+      .from(schema.photos)
+      .innerJoin(schema.events, eq(schema.events.id, schema.photos.eventId))
+      .where(eq(schema.photos.featured, true))
+      .orderBy(desc(schema.photos.createdAt))
+      .limit(HOME_GALLERY_MAX),
+  ]);
   return {
+    photos,
     dues: await getDues(db),
     events: events.map((e) => ({ ...e, eth: isoToEth(e.date), daysLeft: daysBetween(today, e.date) })),
   };
@@ -29,7 +41,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { lang, tr } = useT();
   const signedIn = Boolean(useRouteLoaderData<typeof rootLoader>("root")?.user);
-  const { events, dues } = loaderData;
+  const { events, dues, photos } = loaderData;
   const h = tr.home;
 
   return (
@@ -64,6 +76,31 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </ul>
         )}
       </section>
+
+      {photos.length > 0 && (
+        <section className="home-gallery" aria-labelledby="gallery-h">
+          <div className="home-gallery-head">
+            <h2 id="gallery-h">{tr.gallery.title}</h2>
+            <Link to="/gallery">{tr.gallery.seeAll} →</Link>
+          </div>
+          <div className="marquee">
+            <div className="marquee-track" style={{ animationDuration: `${marqueeSeconds(photos.length)}s` }}>
+              {[0, 1].map((copy) => (
+                // The second copy makes the loop seamless; screen readers and keyboards skip it.
+                <ul key={copy} className="marquee-list" aria-hidden={copy === 1 || undefined}>
+                  {photos.map((p) => (
+                    <li key={p.id}>
+                      <Link to="/gallery" tabIndex={copy === 1 ? -1 : undefined}>
+                        <img src={photoUrl(p.id, "thumb")} alt={copy === 1 ? "" : p.caption ?? eventTitle(lang, p)} width={p.width} height={p.height} loading="lazy" decoding="async" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="page home-facts">
         <div className="fact">

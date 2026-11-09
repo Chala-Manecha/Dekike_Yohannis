@@ -10,7 +10,9 @@ Telegram bot + Cron · Turnstile. Interface in **Afaan Oromoo (default) and Amha
 
 | Area | Who | Where |
 |---|---|---|
-| Upcoming events (from 3 days before), dues, Telegram group | everyone | `/` |
+| Upcoming events (from 3 days before), moving photo gallery, dues, Telegram group | everyone | `/` |
+| All event photos, grouped by event | everyone | `/gallery` |
+| Upload photos, captions, choose homepage photos, delete | preparation · leader | `/events/:id/photos` |
 | Registration: department, graduation year, current year | members | `/register` |
 | Month-by-month dues, upload payment screenshot, history | members | `/me` |
 | Feedback to the leader (can be anonymous) | members | `/feedback` |
@@ -31,6 +33,11 @@ Each contribution stores the rate and standing at the time, so changes never rew
 **Events.** Types: monthly zikr (xoofoo), welcome for new students, farewell for graduates, other
 (class / knowledge sharing). A zikr is created automatically for the 30th of this month and the next two
 (none in Pagume); preparation or the leader can move it. Rescheduling notifies the group and every member.
+
+**Photos.** Resized in the browser before upload (1600 px WebP + 480 px thumbnail), one request per
+photo, so the Worker only checks and stores them. Stored in R2 under `photos/` and served publicly at
+`/photos/<id>.webp` with a one-year cache; receipts in the same bucket stay private. "Show on homepage"
+puts a photo in the moving gallery (latest 24; it pauses on hover and stays still for reduced-motion users).
 
 ## Telegram notifications (automatic)
 
@@ -70,11 +77,11 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/db/schema.ts` tables · `tests/` 59 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/db/schema.ts` tables · `tests/` 72 tests
 
 ## Next round
-Learning materials (አለማዊ ትምህርት: exams, assignments, PDFs) · event photos and a moving gallery on the
-homepage · songs · property · full money in/out ledger.
+Learning materials (አለማዊ ትምህርት: exams, assignments, PDFs; members only) · songs · property ·
+full money in/out ledger.
 
 ## Scripts
 `npm run dev` · `npm test` · `npm run typecheck` · `npm run build` · `npm run db:generate`

@@ -22,6 +22,9 @@ describe("can", () => {
     expect(can("preparation", "program:manage")).toBe(true);
     expect(can("songs", "event:manage")).toBe(false);
   });
+  it("only leader, preparation and admin manage event photos", () => {
+    expect(who("photo:manage")).toEqual(["preparation", "leader", "admin"]);
+  });
   it("gives plain members no protected permission", () => {
     for (const p of Object.keys(PERMISSIONS) as Permission[]) expect(can("member", p)).toBe(false);
   });

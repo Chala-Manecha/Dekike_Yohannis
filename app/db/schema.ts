@@ -272,6 +272,29 @@ export const outbox = sqliteTable(
   (t) => [index("outbox_status_idx").on(t.status, t.createdAt)],
 );
 
+/**
+ * Event photos. Files live in R2 under photos/<id>.webp (full) and photos/<id>-t.webp
+ * (thumbnail); both are made in the browser. Public: anyone can see them.
+ * featured = shown in the moving gallery on the homepage.
+ */
+export const photos = sqliteTable(
+  "photos",
+  {
+    id: id(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    caption: text("caption"),
+    featured: integer("featured", { mode: "boolean" }).notNull().default(false),
+    uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("photos_event_idx").on(t.eventId, t.createdAt), index("photos_featured_idx").on(t.featured, t.createdAt)],
+);
+
 export type Member = typeof members.$inferSelect;
 export type Contribution = typeof contributions.$inferSelect;
 export type Event = typeof events.$inferSelect;
+export type Photo = typeof photos.$inferSelect;

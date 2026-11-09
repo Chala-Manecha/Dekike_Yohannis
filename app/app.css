@@ -299,3 +299,34 @@ th { color: var(--stone); font-weight: 600; }
 .feedback-message { white-space: pre-wrap; margin: 0 0 0.75rem; }
 .event-card .badge { align-self: flex-start; }
 @media (max-width: 34rem) { .wordmark small { display: none; } .hero-uni { font-size: var(--step--1); } }
+
+/* ---------- Photos ---------- */
+.home-gallery { padding: 1rem 0 2.5rem; }
+.home-gallery-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; max-width: 68rem; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 3rem); }
+.marquee { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
+.marquee-track { display: flex; width: max-content; animation: marquee linear infinite; }
+.marquee:hover .marquee-track, .marquee:focus-within .marquee-track { animation-play-state: paused; }
+.marquee-list { display: flex; list-style: none; margin: 0; padding: 0; }
+.marquee-list li { margin-right: 0.75rem; }
+.marquee-list img { display: block; height: clamp(140px, 22vw, 210px); width: auto; border-radius: 8px; background: var(--line); }
+@keyframes marquee { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .marquee { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+  .marquee-track { animation: none; }
+  .marquee-list[aria-hidden="true"] { display: none; }
+}
+
+.gallery-group { margin-bottom: 2.5rem; }
+.gallery-group h2 small { font-size: var(--step--1); font-weight: 400; margin-left: 0.5rem; }
+.photo-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr)); }
+.photo-grid img, .photo-admin img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; background: var(--line); }
+.photo-cap { display: block; font-size: var(--step--1); color: var(--stone); margin-top: 0.25rem; }
+
+.photo-uploader { margin: 1.5rem 0; }
+.photo-uploader .btn { cursor: pointer; }
+.photo-admin { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); }
+.photo-admin li { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem; background: var(--surface); display: grid; gap: 0.5rem; }
+.photo-admin li.is-featured { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.photo-caption { display: flex; gap: 0.35rem; }
+.photo-caption input { flex: 1; min-width: 0; width: 100%; }
+.photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }

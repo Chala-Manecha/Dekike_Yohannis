@@ -74,6 +74,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           <nav aria-label="Main">
             <NavLink to="/" end>{tr.nav.home}</NavLink>
+            <NavLink to="/gallery">{tr.nav.gallery}</NavLink>
             {data?.user ? <NavLink to="/me">{tr.nav.myPage}</NavLink> : <NavLink to="/register">{tr.nav.register}</NavLink>}
             {data?.nav.events && <NavLink to="/events">{tr.nav.events}</NavLink>}
             {data?.nav.tasks && <NavLink to="/tasks">{tr.nav.tasks}</NavLink>}

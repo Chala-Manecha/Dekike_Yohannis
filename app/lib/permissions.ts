@@ -54,6 +54,7 @@ export const PERMISSIONS = {
   "song:manage": ["admin", "leader", "songs"],
   "property:manage": ["admin", "leader", "property"],
   "education:manage": ["admin", "leader", "education"],
+  "photo:manage": ["admin", "leader", "preparation"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

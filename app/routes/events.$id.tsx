@@ -41,7 +41,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     eth: isoToEth(event.date),
     program,
     tasks: visibleTasks.map((t) => ({ ...t, canWork: canWorkTask(a.user.role, t.department) })),
-    perms: { manage: a.manage, program: a.program, assign: a.assign },
+    perms: { manage: a.manage, program: a.program, assign: a.assign, photos: can(a.user.role, "photo:manage") },
     created: new URL(request.url).searchParams.has("created"),
   };
 }
@@ -138,6 +138,7 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
         <p className="muted">{e.dueMonth(formatEth(lang, { year: event.dueYear, month: event.dueMonth }))}</p>
       )}
       {event.description && <p>{event.description}</p>}
+      {perms.photos && <p><Link to={`/events/${event.id}/photos`} className="btn btn-quiet btn-sm">{tr.gallery.manageTitle}</Link></p>}
       {loaderData.created && <p className="notice" role="status">{e.created}</p>}
       {msg === "updated" && <p className="notice" role="status">{e.updated}</p>}
       {err && <p className="form-error" role="alert">{err === "badDate" ? e.badDate : tr.errors.fixFields}</p>}
