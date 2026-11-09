@@ -20,6 +20,8 @@ Telegram bot + Cron · Turnstile. Interface in **Afaan Oromoo (default) and Amha
 | Feedback to the leader (can be anonymous) | members | `/feedback` |
 | Approve registrations, member list, assign roles | coordinator · leader | `/members` |
 | Review contributions, monthly paid/unpaid, set dues | finance (leader: read-only) | `/finance` |
+| Money in/out ledger by Ethiopian month, receipts, void with reason, CSV | finance (leader: read-only) | `/finance/ledger` |
+| Monthly income, spending and balance (totals only) | active members | `/money` |
 | Events: create, reschedule, cancel, running order | preparation · leader | `/events` |
 | Assign tasks to departments per event | leader | `/events/:id` |
 | A department's tasks | department leads | `/tasks` |
@@ -49,6 +51,12 @@ waits for Education's approval; Education's own uploads appear at once. The file
 request body and streamed into R2 (`materials/<id>`), so large PDFs cost almost no Worker CPU.
 Only active members (and reviewers) can list or open files. A department filter also shows
 "all departments" files, a year filter also shows "any year" files. Returned files are deleted from R2.
+
+**Money ledger.** Approved dues count as income on the day Finance approves them; everything else
+(opening balance, gifts, event income, expenses) is entered by Finance with an optional receipt photo
+(private R2, `ledger/`). Entries are never deleted: a mistake is voided with a reason and stays visible
+(struck through). Totals and the running balance are per Ethiopian month (`app/lib/ledger.ts`, tested).
+Members see only monthly totals and the balance on `/money`.
 
 ## Telegram notifications (automatic)
 
@@ -117,10 +125,10 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 106 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 116 tests
 
 ## Next round
-Songs · property · full money in/out ledger.
+Songs · property.
 
 ## Scripts
 `npm run dev` · `npm test` · `npm run typecheck` · `npm run build` · `npm run db:generate`

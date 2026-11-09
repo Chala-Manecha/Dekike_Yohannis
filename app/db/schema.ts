@@ -328,6 +328,31 @@ export const materials = sqliteTable(
   ],
 );
 
+/**
+ * Money in/out recorded by Finance (dues are counted from approved contributions, not here).
+ * Entries are never deleted: a mistake is voided with a reason, so the history stays auditable.
+ * Receipt photo (optional) in private R2 at ledger/<id>.<ext>.
+ */
+export const ledgerEntries = sqliteTable(
+  "ledger_entries",
+  {
+    id: id(),
+    direction: text("direction", { enum: ["in", "out"] }).notNull(),
+    category: text("category").notNull(), // app/lib/ledger.ts
+    amount: integer("amount").notNull(), // birr
+    date: text("date").notNull(), // Gregorian YYYY-MM-DD (Addis Ababa day)
+    description: text("description").notNull(),
+    eventId: text("event_id").references(() => events.id, { onDelete: "set null" }),
+    receiptKey: text("receipt_key"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    voidedAt: integer("voided_at", { mode: "timestamp_ms" }),
+    voidedBy: text("voided_by").references(() => user.id, { onDelete: "set null" }),
+    voidReason: text("void_reason"),
+    ...timestamps,
+  },
+  (t) => [index("ledger_date_idx").on(t.date)],
+);
+
 /** Wrong-password counter per student ID (app/lib/login-limit.ts). */
 export const loginAttempts = sqliteTable("login_attempts", {
   key: text("key").primaryKey(),

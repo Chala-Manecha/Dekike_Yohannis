@@ -7,7 +7,7 @@ const MAX_SIDE = 1600;
  * smaller files for members on mobile data, less R2 storage, no server CPU.
  * If conversion fails, the original file is uploaded unchanged.
  */
-export function ReceiptInput({ label, hint, preparing, error }: { label: string; hint: string; preparing: string; error?: string }) {
+export function ReceiptInput({ label, hint, preparing, error, required = true }: { label: string; hint: string; preparing: string; error?: string; required?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
 
@@ -42,7 +42,7 @@ export function ReceiptInput({ label, hint, preparing, error }: { label: string;
       <span>
         {label} <small>{hint}</small>
       </span>
-      <input type="file" name="receipt" accept="image/*" required onChange={onChange} aria-invalid={Boolean(error)} />
+      <input type="file" name="receipt" accept="image/*" required={required} onChange={onChange} aria-invalid={Boolean(error)} />
       {busy && <span className="muted">{preparing}</span>}
       {preview && !busy && <img src={preview} alt="" className="receipt-preview" />}
       {error && <span className="field-error">{error}</span>}

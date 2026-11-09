@@ -30,6 +30,10 @@ describe("can", () => {
     expect(canResetPassword("admin", "leader")).toBe(true);
     expect(canResetPassword("finance", "member")).toBe(false);
   });
+  it("only Finance and admins record money; the leader only views", () => {
+    expect(who("ledger:write")).toEqual(["finance", "admin"]);
+    expect(can("leader", "finance:view")).toBe(true);
+  });
   it("only leader, preparation and admin manage event photos", () => {
     expect(who("photo:manage")).toEqual(["preparation", "leader", "admin"]);
   });

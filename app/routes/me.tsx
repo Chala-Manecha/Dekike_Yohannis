@@ -270,7 +270,7 @@ function SignOut({ label }: { label: string }) {
   const { tr } = useT();
   return (
     <>
-    <p><Link to="/me/account" className="btn btn-quiet btn-sm">{tr.accountSettings.title}</Link></p>
+    <p className="me-links"><Link to="/me/account">{tr.accountSettings.title} →</Link><Link to="/money">{tr.ledger.publicTitle} →</Link></p>
     <Form method="post" action="/logout" className="signout" onSubmit={markSignedOut}>
       <button className="btn btn-quiet">{label}</button>
     </Form>

@@ -73,7 +73,7 @@ export default function Finance({ loaderData, actionData }: Route.ComponentProps
   return (
     <section className="page wide">
       <h1>{f.title}</h1>
-      <p className="me-links"><Link to="/finance/month">{f.monthTitle} →</Link>{loaderData.canSettings && <Link to="/finance/settings">{f.settingsTitle} →</Link>}</p>
+      <p className="me-links"><Link to="/finance/ledger">{tr.ledger.title} →</Link><Link to="/finance/month">{f.monthTitle} →</Link>{loaderData.canSettings && <Link to="/finance/settings">{f.settingsTitle} →</Link>}</p>
       {actionData?.message && <p className="notice" role="status">{f[actionData.message]}</p>}
       {!loaderData.canReview && <p className="muted">{f.reviewOnlyFinance}</p>}
 

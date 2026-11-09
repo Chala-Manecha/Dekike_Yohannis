@@ -365,3 +365,19 @@ th { color: var(--stone); font-weight: 600; }
 .facts dt { font-weight: 600; }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .password-fields { display: grid; gap: 0.8rem; }
+
+/* ---------- Money ---------- */
+.month-nav { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+.month-nav a:not(.btn) { font-size: var(--step-1); text-decoration: none; padding: 0 0.5rem; }
+.money-summary { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); margin: 1rem 0 2rem; }
+.money-summary > div { border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem 1rem; background: var(--surface); display: grid; gap: 0.2rem; }
+.money-summary span { font-size: var(--step--1); color: var(--stone); }
+.money-summary strong { font-size: var(--step-1); font-variant-numeric: tabular-nums; }
+.money-closing { border-color: var(--gold) !important; }
+.money-in { color: #2f7d4f; }
+.money-out { color: var(--red); }
+.ledger .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ledger tr.is-void td { text-decoration: line-through; color: var(--stone); }
+.ledger .void-note { display: block; text-decoration: none; color: var(--stone); margin-top: 0.2rem; }
+.ledger tr.is-void td .void-note { display: inline-block; }
+.void summary { cursor: pointer; color: var(--stone); font-size: var(--step--1); }

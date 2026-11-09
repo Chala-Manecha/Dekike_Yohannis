@@ -50,6 +50,13 @@
       "when": 1794254549575,
       "tag": "0006_drop_bot_logins",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794255771163,
+      "tag": "0007_ledger",
+      "breakpoints": true
     }
   ]
 }
