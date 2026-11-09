@@ -1,9 +1,12 @@
-import { and, asc, eq, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, or, type SQL } from "drizzle-orm";
 import { Form, Link } from "react-router";
 import type { Route } from "./+types/songs";
 import { getDb, schema } from "../db";
 import { memberAccess } from "../lib/access.server";
 import { contains } from "../lib/search.server";
+import { isoToEth, todayIso } from "../lib/dates";
+import { formatEth } from "../lib/i18n";
+import { eventTitle } from "../lib/notify";
 import { firstLine, SONG_LANGS, type SongLang } from "../lib/songs";
 import { useT } from "../lib/use-t";
 
@@ -20,16 +23,41 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (q) where.push(or(contains(s.title, q), contains(s.lyrics, q))!);
   if (lang) where.push(eq(s.lang, lang));
   const rows = await getDb(env.DB)
-    .select({ id: s.id, title: s.title, lang: s.lang, lyrics: s.lyrics })
+    .select({ id: s.id, title: s.title, lang: s.lang, lyrics: s.lyrics, audio: s.audioKey })
     .from(s)
     .where(where.length ? and(...where) : undefined)
     .orderBy(asc(s.title))
     .limit(500);
-  return { allowed: true as const, staff, q, lang, songs: rows.map((r) => ({ id: r.id, title: r.title, lang: r.lang, first: firstLine(r.lyrics) })) };
+  // Songs chosen for the next event that has any
+  const db = getDb(env.DB);
+  const next = await db
+    .select({ id: schema.events.id, type: schema.events.type, title: schema.events.title, date: schema.events.date })
+    .from(schema.events)
+    .innerJoin(schema.eventSongs, eq(schema.eventSongs.eventId, schema.events.id))
+    .where(and(gte(schema.events.date, todayIso()), eq(schema.events.status, "scheduled")))
+    .orderBy(asc(schema.events.date))
+    .limit(1)
+    .get();
+  const nextSongs = next
+    ? await db
+        .select({ id: schema.songs.id, title: schema.songs.title })
+        .from(schema.eventSongs)
+        .innerJoin(schema.songs, eq(schema.songs.id, schema.eventSongs.songId))
+        .where(eq(schema.eventSongs.eventId, next.id))
+        .orderBy(asc(schema.eventSongs.sort))
+    : [];
+  return {
+    allowed: true as const,
+    staff,
+    q,
+    lang,
+    next: next ? { ...next, eth: isoToEth(next.date), songs: nextSongs } : null,
+    songs: rows.map((r) => ({ id: r.id, title: r.title, lang: r.lang, first: firstLine(r.lyrics), audio: Boolean(r.audio) })),
+  };
 }
 
 export default function Songs({ loaderData }: Route.ComponentProps) {
-  const { tr } = useT();
+  const { lang: uiLang, tr } = useT();
   const s = tr.songs;
   if (!loaderData.allowed) {
     return (
@@ -39,10 +67,18 @@ export default function Songs({ loaderData }: Route.ComponentProps) {
       </section>
     );
   }
-  const { songs, staff, q, lang } = loaderData;
+  const { songs, staff, q, lang, next } = loaderData;
   return (
     <section className="page">
       <h1>{s.title}</h1>
+      {next && (
+        <section className="panel next-songs" aria-labelledby="next-songs-h">
+          <h2 id="next-songs-h">{s.nextEvent(eventTitle(uiLang, next), formatEth(uiLang, next.eth))}</h2>
+          <ol>
+            {next.songs.map((sg) => <li key={sg.id}><Link to={`/songs/${sg.id}`}>{sg.title}</Link></li>)}
+          </ol>
+        </section>
+      )}
       {staff && <p><Link to="/songs/new" className="btn btn-primary btn-sm">{s.add}</Link></p>}
       <Form method="get" className="filters" role="search">
         <input type="search" name="q" defaultValue={q} placeholder={s.search} aria-label={s.search} />
@@ -58,6 +94,7 @@ export default function Songs({ loaderData }: Route.ComponentProps) {
             <li key={song.id}>
               <Link to={`/songs/${song.id}`}><strong>{song.title}</strong></Link>
               <span className="badge">{s.langs[song.lang]}</span>
+              {song.audio && <span className="muted" title={s.hasAudio} aria-label={s.hasAudio}>🎧</span>}
               <span className="muted song-first">{song.first}</span>
             </li>
           ))}

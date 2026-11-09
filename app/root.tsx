@@ -8,6 +8,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
   useRouteLoaderData,
 } from "react-router";
 import type { Route } from "./+types/root";
@@ -19,6 +20,7 @@ import { t } from "./lib/i18n";
 import { chosenLang, DEFAULT_LANG, langCookie } from "./lib/lang";
 import { can } from "./lib/permissions";
 import { getUser } from "./lib/session.server";
+import { useEffect, useState } from "react";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -58,6 +60,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const tr = t(lang);
   // First visit: nothing else is usable until they pick a language.
   const askLang = Boolean(data && !data.langChosen);
+  // Phones: the menu folds behind a button. Before JavaScript loads it stays open, so it always works.
+  const [menuReady, setMenuReady] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  useEffect(() => setMenuReady(true), []);
+  useEffect(() => setMenuOpen(false), [location.pathname]);
   return (
     <html lang={lang}>
       <head>
@@ -75,7 +83,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span>{tr.groupName}</span>
             <small>{tr.groupSub}</small>
           </Link>
-          <nav aria-label="Main">
+          {menuReady && (
+            <button type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="main-nav" onClick={() => setMenuOpen((o) => !o)}>
+              <span aria-hidden="true">{menuOpen ? "✕" : "☰"}</span> {tr.nav.menu}
+            </button>
+          )}
+          <nav aria-label="Main" id="main-nav" className={menuReady ? (menuOpen ? "is-open" : "is-closed") : undefined}>
             <NavLink to="/" end>{tr.nav.home}</NavLink>
             <NavLink to="/gallery">{tr.nav.gallery}</NavLink>
             {data?.user && <NavLink to="/materials">{tr.nav.materials}</NavLink>}

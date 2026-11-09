@@ -1,4 +1,4 @@
-import { asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, gt, lt, max } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import { z } from "zod";
 import type { Route } from "./+types/events.$id";
@@ -36,12 +36,24 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const program = await db.select().from(schema.eventProgram).where(eq(schema.eventProgram.eventId, event.id)).orderBy(asc(schema.eventProgram.sort));
   const tasks = await db.select().from(schema.eventTasks).where(eq(schema.eventTasks.eventId, event.id)).orderBy(asc(schema.eventTasks.createdAt));
   const visibleTasks = a.manage || a.assign ? tasks : tasks.filter((t) => t.department === a.myDept);
+  const songsManage = can(a.user.role, "song:manage");
+  const eventSongs = await db
+    .select({ id: schema.eventSongs.id, songId: schema.songs.id, title: schema.songs.title, sort: schema.eventSongs.sort })
+    .from(schema.eventSongs)
+    .innerJoin(schema.songs, eq(schema.songs.id, schema.eventSongs.songId))
+    .where(eq(schema.eventSongs.eventId, event.id))
+    .orderBy(asc(schema.eventSongs.sort));
+  const allSongs = songsManage
+    ? await db.select({ id: schema.songs.id, title: schema.songs.title }).from(schema.songs).orderBy(asc(schema.songs.title)).limit(1000)
+    : [];
   return {
     event,
     eth: isoToEth(event.date),
     program,
     tasks: visibleTasks.map((t) => ({ ...t, canWork: canWorkTask(a.user.role, t.department) })),
-    perms: { manage: a.manage, program: a.program, assign: a.assign, photos: can(a.user.role, "photo:manage") },
+    perms: { manage: a.manage, program: a.program, assign: a.assign, photos: can(a.user.role, "photo:manage"), songs: songsManage },
+    eventSongs,
+    allSongs: allSongs.filter((x) => !eventSongs.some((e) => e.songId === x.id)),
     created: new URL(request.url).searchParams.has("created"),
   };
 }
@@ -105,6 +117,37 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return { ok: true };
   }
 
+  if (intent === "addSong" || intent === "removeSong" || intent === "moveUp" || intent === "moveDown") {
+    if (!can(a.user.role, "song:manage")) deny();
+    const es = schema.eventSongs;
+    if (intent === "addSong") {
+      const songId = String(form.get("songId") ?? "");
+      if (!(await db.query.songs.findFirst({ where: eq(schema.songs.id, songId), columns: { id: true } }))) return { error: "fixFields" as const };
+      const [{ top }] = await db.select({ top: max(es.sort) }).from(es).where(eq(es.eventId, event.id));
+      await db.insert(es).values({ eventId: event.id, songId, sort: (top ?? 0) + 1 }).onConflictDoNothing();
+      return { ok: true };
+    }
+    const row = await db.query.eventSongs.findFirst({ where: and(eq(es.id, String(form.get("id"))), eq(es.eventId, event.id)) });
+    if (!row) throw new Response("Not found", { status: 404 });
+    if (intent === "removeSong") {
+      await db.delete(es).where(eq(es.id, row.id));
+      return { ok: true };
+    }
+    // Swap with the neighbour above or below
+    const up = intent === "moveUp";
+    const neighbour = await db.query.eventSongs.findFirst({
+      where: and(eq(es.eventId, event.id), up ? lt(es.sort, row.sort) : gt(es.sort, row.sort)),
+      orderBy: (t, { asc: a2, desc: d2 }) => [up ? d2(t.sort) : a2(t.sort)],
+    });
+    if (neighbour) {
+      await db.batch([
+        db.update(es).set({ sort: neighbour.sort }).where(eq(es.id, row.id)),
+        db.update(es).set({ sort: row.sort }).where(eq(es.id, neighbour.id)),
+      ]);
+    }
+    return { ok: true };
+  }
+
   if (intent === "doneTask") {
     const task = await db.query.eventTasks.findFirst({ where: eq(schema.eventTasks.id, String(form.get("id"))) });
     if (!task || task.eventId !== event.id) throw new Response("Not found", { status: 404 });
@@ -121,7 +164,7 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
   const e = tr.events;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const { event, eth, program, tasks, perms } = loaderData;
+  const { event, eth, program, tasks, perms, eventSongs, allSongs } = loaderData;
   const msg = actionData && "message" in actionData ? actionData.message : null;
   const err = actionData && "error" in actionData ? actionData.error : null;
 
@@ -168,6 +211,34 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
               <input name="part" placeholder={e.part} required maxLength={120} />
               <input name="person" placeholder={e.person} maxLength={120} />
               <button className="btn btn-quiet btn-sm" disabled={busy}>{e.addPart}</button>
+            </Form>
+          )}
+
+          <h2>{tr.songs.forEvent}</h2>
+          {eventSongs.length === 0 ? <p className="muted">{tr.songs.noneForEvent}</p> : (
+            <ol className="program">
+              {eventSongs.map((sg, i) => (
+                <li key={sg.id}>
+                  <span><Link to={`/songs/${sg.songId}`}>{sg.title}</Link></span>
+                  {perms.songs && (
+                    <Form method="post" className="row-actions">
+                      <input type="hidden" name="id" value={sg.id} />
+                      {i > 0 && <button className="link-btn" name="intent" value="moveUp" disabled={busy} aria-label={tr.songs.moveUp}>↑</button>}
+                      {i < eventSongs.length - 1 && <button className="link-btn" name="intent" value="moveDown" disabled={busy} aria-label={tr.songs.moveDown}>↓</button>}
+                      <button className="link-btn" name="intent" value="removeSong" disabled={busy} aria-label={tr.remove}>✕</button>
+                    </Form>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          {perms.songs && allSongs.length > 0 && (
+            <Form method="post" className="inline-form">
+              <input type="hidden" name="intent" value="addSong" />
+              <select name="songId" aria-label={tr.songs.addToEvent}>
+                {allSongs.map((sg) => <option key={sg.id} value={sg.id}>{sg.title}</option>)}
+              </select>
+              <button className="btn btn-quiet btn-sm" disabled={busy}>{tr.songs.addToEvent}</button>
             </Form>
           )}
 

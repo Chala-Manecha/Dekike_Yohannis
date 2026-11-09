@@ -28,3 +28,24 @@ export function countByCondition(items: { quantity: number; condition: Condition
   for (const i of items) out[i.condition] += i.quantity;
   return out;
 }
+
+/** Lending log: who has what, until when. */
+export const loanSchema = z.object({
+  borrower: z.string().trim().min(2, "borrower").max(100, "borrower"),
+  phone: optional(30),
+  quantity: z.coerce.number({ message: "quantity" }).int("quantity").min(1, "quantity").max(100_000, "quantity"),
+  note: optional(200),
+});
+
+export type Loan = { itemId: string; quantity: number; dueDate: string | null; returnedAt: unknown };
+
+/** Pieces still out per item (loans not returned). */
+export function outByItem(loans: Loan[]) {
+  const out = new Map<string, number>();
+  for (const l of loans) if (!l.returnedAt) out.set(l.itemId, (out.get(l.itemId) ?? 0) + l.quantity);
+  return out;
+}
+
+export function isOverdue(loan: Loan, todayIso: string) {
+  return !loan.returnedAt && Boolean(loan.dueDate) && loan.dueDate! < todayIso;
+}

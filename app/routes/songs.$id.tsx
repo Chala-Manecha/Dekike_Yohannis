@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Form, Link, redirect, useSearchParams } from "react-router";
 import type { Route } from "./+types/songs.$id";
+import { AudioUpload } from "../components/AudioUpload";
 import { SongForm } from "../components/SongForm";
 import { getDb, schema } from "../db";
 import { memberAccess } from "../lib/access.server";
@@ -14,7 +15,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!allowed) throw new Response("Forbidden", { status: 403 });
   const song = await getDb(env.DB).query.songs.findFirst({ where: eq(schema.songs.id, params.id) });
   if (!song) throw new Response("Not found", { status: 404 });
-  return { song: { id: song.id, title: song.title, lang: song.lang, lyrics: song.lyrics }, staff };
+  return { song: { id: song.id, title: song.title, lang: song.lang, lyrics: song.lyrics, hasAudio: Boolean(song.audioKey) }, staff };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -22,9 +23,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = await requirePermission(request, env, "song:manage");
   const db = getDb(env.DB);
   const form = await request.formData();
+  const existing = await db.query.songs.findFirst({ where: eq(schema.songs.id, params.id), columns: { audioKey: true } });
+  if (!existing) throw new Response("Not found", { status: 404 });
   if (form.get("intent") === "delete") {
     await db.delete(schema.songs).where(eq(schema.songs.id, params.id));
+    if (existing.audioKey) await env.MEDIA.delete(existing.audioKey);
     throw redirect("/songs");
+  }
+  if (form.get("intent") === "deleteAudio") {
+    await db.update(schema.songs).set({ audioKey: null, audioType: null, audioSize: null }).where(eq(schema.songs.id, params.id));
+    if (existing.audioKey) await env.MEDIA.delete(existing.audioKey);
+    return { audioRemoved: true };
   }
   const parsed = songSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) {
@@ -59,6 +68,17 @@ export default function Song({ loaderData, actionData }: Route.ComponentProps) {
         <article className="song">
           <h1>{song.title}</h1>
           <p className="muted">{s.langs[song.lang]}</p>
+          {song.hasAudio && <audio className="song-audio" controls preload="none" src={`/songs/${song.id}/audio`} />}
+          {staff && (
+            <div className="song-audio-tools">
+              <AudioUpload songId={song.id} />
+              {song.hasAudio && (
+                <Form method="post" onSubmit={(e) => { if (!confirm(s.confirmDeleteAudio)) e.preventDefault(); }}>
+                  <button className="link-btn" name="intent" value="deleteAudio">{s.deleteAudio}</button>
+                </Form>
+              )}
+            </div>
+          )}
           <div className="lyrics" lang={song.lang === "am" || song.lang === "gez" ? "am" : song.lang === "om" ? "om" : undefined}>{song.lyrics}</div>
           {staff && <p><Link to="?edit" className="btn btn-quiet btn-sm">{s.edit}</Link></p>}
         </article>

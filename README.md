@@ -22,9 +22,9 @@ Telegram bot + Cron · Turnstile. Interface in **Afaan Oromoo (default) and Amha
 | Review contributions, monthly paid/unpaid, set dues | finance (leader: read-only) | `/finance` |
 | Money in/out ledger by Ethiopian month, receipts, void with reason, CSV | finance (leader: read-only) | `/finance/ledger` |
 | Monthly income, spending and balance (totals only) | active members | `/money` |
-| Songs: search, read lyrics (large text for singing) | active members | `/songs` |
-| Add, edit, delete songs | songs · leader | `/songs` |
-| Property inventory: quantity, condition, where it is, photo | property · leader | `/property` |
+| Songs: search, read lyrics, listen to recordings, the next event's song list | active members | `/songs` |
+| Add, edit, delete songs; upload a recording; choose and order songs per event | songs · leader | `/songs`, `/events/:id` |
+| Property inventory: quantity, condition, where it is, photo; lending log with due dates and overdue list | property · leader | `/property` |
 | Events: create, reschedule, cancel, running order | preparation · leader | `/events` |
 | Assign tasks to departments per event | leader | `/events/:id` |
 | A department's tasks | department leads | `/tasks` |
@@ -128,11 +128,11 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/lib/songs.ts` · `app/lib/property.ts` · `app/lib/search.server.ts` safe search · `app/db/schema.ts` tables · `tests/` 122 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/lib/songs.ts` · `app/lib/property.ts` · `app/lib/search.server.ts` safe search · `app/db/schema.ts` tables · `tests/` 127 tests
 
-## Ideas for later
-Audio for songs · songs chosen per zikr · property lending log · a collapsible menu on phones
-(the menu is getting long for staff roles).
+**Song recordings** (MP3/M4A/OGG/WAV up to 15 MB) are streamed into private R2 as the raw request body and
+played back members-only with byte ranges, so phones can seek. **On phones** the menu folds behind a
+"☰" button (it stays open until JavaScript loads, so it always works).
 
 ## Scripts
 `npm run dev` · `npm test` · `npm run typecheck` · `npm run build` · `npm run db:generate`

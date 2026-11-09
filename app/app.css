@@ -397,3 +397,26 @@ th { color: var(--stone); font-weight: 600; }
 .property-edit { grid-column: 1 / -1; }
 .property-edit summary { cursor: pointer; color: var(--lapis); font-size: var(--step--1); }
 .cond--broken .property-main strong { color: var(--red); }
+
+/* ---------- Phone menu ---------- */
+.menu-toggle { display: none; font: inherit; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 0.35rem 0.9rem; color: var(--lapis); cursor: pointer; }
+@media (max-width: 760px) {
+  .menu-toggle { display: inline-flex; gap: 0.4rem; align-items: center; }
+  .site-header nav.is-closed { display: none; }
+  .site-header nav.is-open { display: flex; flex-direction: column; gap: 0; width: 100%; border-top: 1px solid var(--line); }
+  .site-header nav.is-open a { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+  .site-header nav.is-open a.active { border-bottom-color: var(--gold); font-weight: 600; }
+}
+
+/* ---------- Songs extras ---------- */
+.song-audio { width: 100%; margin: 0.5rem 0 1rem; }
+.song-audio-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.next-songs { border-color: var(--gold); margin: 1rem 0 1.5rem; }
+.next-songs h2 { font-size: var(--step-1); margin-top: 0; }
+.next-songs ol { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.35rem; }
+
+/* ---------- Lending ---------- */
+.loans { margin: 1rem 0 1.5rem; }
+.loans ul { list-style: none; padding: 0; margin: 0; }
+.loans li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.loans li.is-overdue { border-left: 3px solid var(--red); padding-left: 0.6rem; }

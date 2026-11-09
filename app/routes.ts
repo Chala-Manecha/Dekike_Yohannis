@@ -29,6 +29,7 @@ export default [
   route("songs", "routes/songs.tsx"),
   route("songs/new", "routes/songs.new.tsx"),
   route("songs/:id", "routes/songs.$id.tsx"),
+  route("songs/:id/audio", "routes/songs.$id.audio.ts"),
   route("property", "routes/property.tsx"),
   route("property/:id/photo", "routes/property.$id.photo.ts"),
   route("members", "routes/members.tsx"),

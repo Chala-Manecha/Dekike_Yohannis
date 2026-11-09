@@ -361,11 +361,31 @@ export const songs = sqliteTable(
     title: text("title").notNull(),
     lang: text("lang", { enum: ["om", "am", "gez", "other"] }).notNull(),
     lyrics: text("lyrics").notNull(),
+    // Optional recording in private R2 (songs/<id>.<ext>), members only
+    audioKey: text("audio_key"),
+    audioType: text("audio_type"),
+    audioSize: integer("audio_size"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
     ...timestamps,
   },
   (t) => [index("songs_title_idx").on(t.title)],
+);
+
+/** Songs chosen for an event, in singing order. */
+export const eventSongs = sqliteTable(
+  "event_songs",
+  {
+    id: id(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    songId: text("song_id")
+      .notNull()
+      .references(() => songs.id, { onDelete: "cascade" }),
+    sort: integer("sort").notNull(),
+  },
+  (t) => [uniqueIndex("event_songs_unique").on(t.eventId, t.songId), index("event_songs_event_idx").on(t.eventId, t.sort)],
 );
 
 /** Property (qabeenya / ንብረት) inventory. Photo (optional) in private R2 at property/<id>.<ext>. */
@@ -380,6 +400,28 @@ export const propertyItems = sqliteTable("property_items", {
   updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
   ...timestamps,
 });
+
+/** Property lent out: who, how many, until when; returnedAt set when it comes back. */
+export const propertyLoans = sqliteTable(
+  "property_loans",
+  {
+    id: id(),
+    itemId: text("item_id")
+      .notNull()
+      .references(() => propertyItems.id, { onDelete: "cascade" }),
+    borrower: text("borrower").notNull(),
+    phone: text("phone"),
+    quantity: integer("quantity").notNull(),
+    outDate: text("out_date").notNull(), // YYYY-MM-DD
+    dueDate: text("due_date"), // YYYY-MM-DD, optional
+    note: text("note"),
+    returnedAt: integer("returned_at", { mode: "timestamp_ms" }),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    returnedBy: text("returned_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("property_loans_item_idx").on(t.itemId, t.returnedAt)],
+);
 
 /** Wrong-password counter per student ID (app/lib/login-limit.ts). */
 export const loginAttempts = sqliteTable("login_attempts", {

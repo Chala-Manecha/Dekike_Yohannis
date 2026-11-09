@@ -35,3 +35,45 @@ describe("property", () => {
     expect(countByCondition([{ quantity: 4, condition: "good" }, { quantity: 2, condition: "worn" }, { quantity: 1, condition: "good" }])).toEqual({ good: 5, worn: 2, broken: 0 });
   });
 });
+
+import { checkAudio, parseRange, AUDIO_MAX_BYTES } from "../app/lib/songs";
+import { isOverdue, loanSchema, outByItem } from "../app/lib/property";
+
+describe("song audio", () => {
+  it("accepts common phone recordings only", () => {
+    expect(checkAudio("audio/mpeg", 1000)).toBeNull();
+    expect(checkAudio("audio/mp4", 1000)).toBeNull();
+    expect(checkAudio("video/mp4", 1000)).toBe("audioType");
+    expect(checkAudio("audio/mpeg", 0)).toBe("fileMissing");
+    expect(checkAudio("audio/mpeg", AUDIO_MAX_BYTES + 1)).toBe("audioSize");
+  });
+  it("reads byte ranges so players can seek", () => {
+    expect(parseRange("bytes=0-99", 1000)).toEqual({ offset: 0, length: 100 });
+    expect(parseRange("bytes=900-", 1000)).toEqual({ offset: 900, length: 100 });
+    expect(parseRange("bytes=-200", 1000)).toEqual({ offset: 800, length: 200 });
+    expect(parseRange("bytes=500-5000", 1000)).toEqual({ offset: 500, length: 500 });
+    expect(parseRange("bytes=1000-", 1000)).toBe("unsatisfiable");
+    expect(parseRange(null, 1000)).toBeNull();
+    expect(parseRange("items=0-1", 1000)).toBeNull();
+  });
+});
+
+describe("lending", () => {
+  const loans = [
+    { itemId: "a", quantity: 2, dueDate: "2026-11-01", returnedAt: null },
+    { itemId: "a", quantity: 1, dueDate: null, returnedAt: null },
+    { itemId: "a", quantity: 5, dueDate: "2026-10-01", returnedAt: new Date() },
+    { itemId: "b", quantity: 1, dueDate: "2026-12-01", returnedAt: null },
+  ];
+  it("counts pieces still out, ignoring returned loans", () => {
+    expect(Object.fromEntries(outByItem(loans))).toEqual({ a: 3, b: 1 });
+  });
+  it("is overdue only when not returned and past the due date", () => {
+    expect(loans.map((l) => isOverdue(l, "2026-11-09"))).toEqual([true, false, false, false]);
+  });
+  it("validates a loan", () => {
+    expect(loanSchema.parse({ borrower: "Abebe", quantity: "2", phone: "", note: "" })).toEqual({ borrower: "Abebe", phone: null, quantity: 2, note: null });
+    expect(loanSchema.safeParse({ borrower: "A", quantity: "1" }).success).toBe(false);
+    expect(loanSchema.safeParse({ borrower: "Abebe", quantity: "0" }).success).toBe(false);
+  });
+});
