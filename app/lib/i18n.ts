@@ -75,6 +75,10 @@ const am = {
     duesStudent: (n: number) => `በግቢ ያሉ ተማሪዎች፦ ${n} ብር`,
     duesGraduate: (n: number) => `ምሩቃን፦ ${n} ብር`,
     today: "ዛሬ",
+    nextZikr: "ቀጣዩ ዝክር",
+    duesNote: "መዋጮውን ከከፈሉ በኋላ የክፍያ ምስሉን በ«የእኔ ገጽ» ያያይዙ።",
+    serveTitle: "በአገልግሎት ይሳተፉ",
+    serveIntro: "ማኅበሩ በእነዚህ ክፍሎች ያገለግላል። ሲመዘገቡ የሚፈልጉትን ይምረጡ።",
     inDays: (n: number) => (n === 1 ? "ነገ" : `በ${n} ቀን ውስጥ`),
   },
   login: {
@@ -640,6 +644,10 @@ const om: Dict = {
     duesStudent: (n: number) => `Barattoota mooraa keessaa: birrii ${n}`,
     duesGraduate: (n: number) => `Eebbifamtoota: birrii ${n}`,
     today: "Har'a",
+    nextZikr: "Xoofoo itti aanu",
+    duesNote: "Erga kaffaltanii booda suuraa kaffaltii «Fuula koo» irratti maxxansaa.",
+    serveTitle: "Tajaajila keessatti hirmaadhaa",
+    serveIntro: "Waldaan kutaalee kanaan tajaajila. Yommuu galmooftan kan barbaaddan filadhaa.",
     inDays: (n: number) => (n === 1 ? "Boru" : `Guyyaa ${n} keessatti`),
   },
   login: {
