@@ -1,12 +1,12 @@
 import { and, asc, eq } from "drizzle-orm";
-import { Form, useNavigation } from "react-router";
+import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import type { Route } from "./+types/members";
 import { getDb, schema } from "../db";
 import { classInfo } from "../lib/classyear";
 import { toEth } from "../lib/ethiopian";
 import { standingLabel } from "../lib/i18n";
 import { clearPassword } from "../lib/accounts.server";
-import { can, canAssignRole, canResetPassword, isRole, ROLES, type Role } from "../lib/permissions";
+import { can, canAssignRole, canResetPassword, isRole, ROLES, SERVICE_DEPARTMENTS, type Role, type ServiceDepartment } from "../lib/permissions";
 import { reviewMemberTransition } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 import { useT } from "../lib/use-t";
@@ -27,6 +27,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       registeredYear: schema.members.registeredYear,
       phone: schema.members.phone,
       studentId: schema.members.studentId,
+      interests: schema.members.interests,
       status: schema.members.status,
       telegramUsername: schema.user.telegramUsername,
       role: schema.user.role,
@@ -40,6 +41,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     actorRole: user.role,
     canReview: can(user.role, "registration:review"),
     canRoles: can(user.role, "role:assign"),
+    canContacts: can(user.role, "contact:manage"),
     pending: all.filter((m) => m.status === "pending"),
     active: all.filter((m) => m.status === "active"),
   };
@@ -92,14 +94,23 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
   const { lang, tr } = useT();
   const t = tr.members;
   const nav = useNavigation();
-  const { pending, active, canReview, canRoles, actorRole } = loaderData;
+  const { pending, canReview, canRoles, actorRole } = loaderData;
+  // Filter by "wants to serve in" (helps the leader fill departments)
+  const [params, setParams] = useSearchParams();
+  const want = (SERVICE_DEPARTMENTS as readonly string[]).includes(params.get("want") ?? "") ? (params.get("want") as ServiceDepartment) : null;
+  const active = want ? loaderData.active.filter((m) => m.interests.includes(want)) : loaderData.active;
   type Row = (typeof active)[number];
 
   const cells = (m: Row) => (
     <>
       <td>{m.fullName}{m.christianName && <small className="muted"> ({m.christianName})</small>}{m.studentId && <><br /><small className="muted">{m.studentId}</small></>}</td>
       <td>{tr.dept[m.department]}</td>
-      <td>{standingLabel(lang, m.standing)}</td>
+      <td>
+        {standingLabel(lang, m.standing)}
+        {m.interests.length > 0 && (
+          <div className="interests">{m.interests.map((d) => <span key={d} className="badge">{tr.serviceDept[d as ServiceDepartment] ?? d}</span>)}</div>
+        )}
+      </td>
       <td><a href={`tel:${m.phone}`}>{m.phone}</a></td>
       <td>{m.telegramUsername ? <a href={`https://t.me/${m.telegramUsername}`} target="_blank" rel="noreferrer">@{m.telegramUsername}</a> : "—"}</td>
     </>
@@ -113,6 +124,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
   return (
     <section className="page wide">
       <h1>{t.title}</h1>
+      {loaderData.canContacts && <p><Link to="/contacts">{tr.contacts.manageTitle} →</Link></p>}
       {actionData?.message && <p className={actionData.message === "roleDenied" ? "form-error" : "notice"} role="status">{t[actionData.message]}</p>}
 
       {canReview && (
@@ -138,6 +150,13 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
       )}
 
       <h2>{t.activeTitle} ({active.length})</h2>
+      <label className="inline-form">
+        <span>{tr.register.interests}</span>
+        <select value={want ?? ""} onChange={(e) => setParams(e.currentTarget.value ? { want: e.currentTarget.value } : {}, { replace: true })}>
+          <option value="">—</option>
+          {SERVICE_DEPARTMENTS.map((d) => <option key={d} value={d}>{tr.serviceDept[d]}</option>)}
+        </select>
+      </label>
       <div className="table-wrap"><table>{head(t.role)}<tbody>
         {active.map((m) => {
           const editable = canRoles && ROLES.some((r) => r !== m.role && canAssignRole(actorRole, m.role, r));

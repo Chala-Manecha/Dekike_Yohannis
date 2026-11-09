@@ -99,6 +99,8 @@ export const members = sqliteTable(
     studyYear: integer("study_year"), // year of study at registration; null if already graduated
     registeredYear: integer("registered_year").notNull(), // Ethiopian year of registration
     lang: text("lang", { enum: ["om", "am"] }).notNull(),
+    // Service departments the member would like to serve in (app/lib/permissions.ts SERVICE_DEPARTMENTS)
+    interests: text("interests", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     status: text("status", { enum: ["pending", "active", "rejected", "inactive"] })
       .notNull()
       .default("pending"),
@@ -422,6 +424,17 @@ export const propertyLoans = sqliteTable(
   },
   (t) => [index("property_loans_item_idx").on(t.itemId, t.returnedAt)],
 );
+
+/** Public contact people, kept by the members department (shown on the homepage). */
+export const contacts = sqliteTable("contacts", {
+  id: id(),
+  name: text("name").notNull(),
+  role: text("role"), // e.g. "Leader", "Finance"
+  phone: text("phone"),
+  telegram: text("telegram"), // username without @
+  sort: integer("sort").notNull().default(0),
+  ...timestamps,
+});
 
 /** Wrong-password counter per student ID (app/lib/login-limit.ts). */
 export const loginAttempts = sqliteTable("login_attempts", {

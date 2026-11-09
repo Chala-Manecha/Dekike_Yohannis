@@ -56,6 +56,7 @@ export const PERMISSIONS = {
   "education:manage": ["admin", "leader", "education"],
   "photo:manage": ["admin", "leader", "preparation"],
   "ledger:write": ["admin", "finance"],
+  "contact:manage": ["admin", "leader", "members_coordinator"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -93,4 +94,10 @@ export function canResetPassword(actor: Role, target: Role): boolean {
   if (!can(actor, "registration:review")) return false;
   if (actor === "admin") return true;
   return target !== "leader" && target !== "admin";
+}
+
+/** Checkbox values → the valid service departments, no duplicates, in the usual order. */
+export function parseInterests(values: unknown[]): ServiceDepartment[] {
+  const set = new Set(values.map(String));
+  return SERVICE_DEPARTMENTS.filter((d) => set.has(d));
 }

@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import { getPasswordHash, setPasswordHash, telegramIdForUser } from "../lib/accounts.server";
 import type { Dict } from "../lib/i18n";
 import { hashPassword, passwordSchema, verifyPassword } from "../lib/password";
+import { parseInterests, SERVICE_DEPARTMENTS } from "../lib/permissions";
 import { requireUser } from "../lib/session.server";
 import { useT } from "../lib/use-t";
 import { eq } from "drizzle-orm";
@@ -17,9 +18,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const user = await requireUser(request, env);
   const db = getDb(env.DB);
-  const member = await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { studentId: true } });
+  const member = await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { studentId: true, interests: true } });
   return {
     studentId: member?.studentId ?? null,
+    interests: member ? member.interests : null,
     hasPassword: Boolean(await getPasswordHash(db, user.id)),
     telegram: (await telegramIdForUser(db, user.id)) ? (user.telegramUsername ? `@${user.telegramUsername}` : "✓") : null,
     botUsername: env.TELEGRAM_BOT_USERNAME,
@@ -31,6 +33,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = await requireUser(request, env);
   const db = getDb(env.DB);
   const form = await request.formData();
+  if (form.get("intent") === "interests") {
+    await db.update(schema.members).set({ interests: parseInterests(form.getAll("interests")) }).where(eq(schema.members.userId, user.id));
+    return { saved: false, interestsSaved: true, fieldErrors: {} as Record<string, ErrorKey> };
+  }
   const current = await getPasswordHash(db, user.id);
   const fieldErrors: Record<string, ErrorKey> = {};
   const next = String(form.get("password") ?? "");
@@ -38,9 +44,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (current && !(await verifyPassword(String(form.get("current") ?? ""), current))) fieldErrors.current = "passwordWrong";
   if (!passwordSchema.safeParse(next).success) fieldErrors.password = "passwordShort";
   else if (next !== form.get("password2")) fieldErrors.password2 = "passwordMismatch";
-  if (Object.keys(fieldErrors).length) return { saved: false, fieldErrors };
+  if (Object.keys(fieldErrors).length) return { saved: false, interestsSaved: false, fieldErrors };
   await setPasswordHash(db, user.id, await hashPassword(next));
-  return { saved: true, fieldErrors };
+  return { saved: true, interestsSaved: false, fieldErrors };
 }
 
 export default function Account({ loaderData, actionData }: Route.ComponentProps) {
@@ -51,7 +57,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
     const key = actionData?.fieldErrors?.[k];
     return key ? (tr.errors[key] as string) : undefined;
   };
-  const { studentId, hasPassword, telegram, botUsername } = loaderData;
+  const { studentId, hasPassword, telegram, botUsername, interests } = loaderData;
 
   return (
     <section className="page narrow">
@@ -71,6 +77,22 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
           )}
         </dd>
       </dl>
+
+      {interests && (
+        <>
+          <h2>{tr.register.interests}</h2>
+          {actionData?.interestsSaved && <p className="notice" role="status">{tr.saved}</p>}
+          <Form method="post" className="form">
+            <input type="hidden" name="intent" value="interests" />
+            <div className="choices choices--wrap">
+              {SERVICE_DEPARTMENTS.map((d) => (
+                <label key={d}><input type="checkbox" name="interests" value={d} defaultChecked={interests.includes(d)} /> {tr.serviceDept[d]}</label>
+              ))}
+            </div>
+            <button className="btn btn-quiet btn-sm" disabled={busy}>{tr.save}</button>
+          </Form>
+        </>
+      )}
 
       <h2>{hasPassword ? a.changePassword : a.setPassword}</h2>
       {!hasPassword && <p className="muted">{a.setPasswordHint}</p>}

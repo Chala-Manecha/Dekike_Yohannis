@@ -5,6 +5,7 @@
  * one in the mini app.
  */
 import { GRADUATION_MONTHS, PROGRAM_YEARS, type AcademicDepartment } from "../config";
+import { parseInterests, SERVICE_DEPARTMENTS, type ServiceDepartment } from "./permissions";
 import { resolveClass } from "./classyear";
 import type { EthDate } from "./ethiopian";
 import { DICTS, t } from "./i18n";
@@ -23,6 +24,7 @@ export const REG_STEPS = [
   "studyYear",
   "graduationYear",
   "graduationMonth",
+  "interests",
   "confirm",
 ] as const;
 export type RegStep = (typeof REG_STEPS)[number];
@@ -38,6 +40,8 @@ export type RegReply = {
   askContact?: boolean;
   /** Remove the phone keyboard once it isn't needed */
   removeKeyboard?: boolean;
+  /** Update the tapped message instead of sending a new one (toggle buttons) */
+  editInPlace?: boolean;
 };
 
 export type RegResult =
@@ -55,6 +59,7 @@ export type RegistrationData = {
   graduationYear: number;
   graduationMonth: number;
   studyYear: number | null;
+  interests: ServiceDepartment[];
 };
 
 export const START: RegState = { step: "lang", data: {} };
@@ -98,6 +103,14 @@ export function prompt(state: RegState, error?: string): RegReply {
         text: q(`${b.step(9)} ${d.standing === "student" ? r.graduationMonthExpected : r.graduationMonth}?`),
         choices: [GRADUATION_MONTHS.map((m) => [String(m), tr.months[m - 1]] as [string, string])],
       };
+    case "interests": {
+      const chosen = new Set((d.interests ?? "").split(",").filter(Boolean));
+      const buttons = SERVICE_DEPARTMENTS.map((x) => [x, `${chosen.has(x) ? "✅ " : ""}${tr.serviceDept[x]}`] as [string, string]);
+      const rows: [string, string][][] = [];
+      for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+      rows.push([["done", chosen.size ? b.finished : b.skip]]);
+      return { text: q(`${b.step(10)} ${r.interests}\n${b.interestsHint}`), choices: rows };
+    }
     case "confirm":
       return { text: q(summary(state)), choices: [[["submit", b.submit]], [["restart", b.restart]]] };
   }
@@ -118,6 +131,7 @@ function summary(state: RegState) {
     `${r.department}: ${tr.dept[d.department as AcademicDepartment]}`,
     d.standing === "student" ? `${r.studyYear}: ${tr.standing.year(Number(d.studyYear))}` : `${r.graduationYear}: ${d.graduationYear}`,
     `${d.standing === "student" ? r.graduationMonthExpected : r.graduationMonth}: ${tr.months[Number(d.graduationMonth) - 1]}`,
+    `${r.interests}: ${parseInterests((d.interests ?? "").split(",")).map((x) => tr.serviceDept[x]).join(", ") || "—"}`,
   ];
   return lines.join("\n");
 }
@@ -199,7 +213,16 @@ export function regNext(state: RegState, input: RegInput, today: EthDate): RegRe
         const back: RegState = { step: d.standing === "graduate" ? "graduationYear" : "studyYear", data: d };
         return { state: back, reply: prompt(back, resolved.field === "graduationYear" ? err.classYear : err.studyYear) };
       }
-      return go(state, "confirm", { graduationMonth: v });
+      return go(state, "interests", { graduationMonth: v });
+    }
+    case "interests": {
+      if (choice === "done") return go(state, "confirm");
+      if (!(SERVICE_DEPARTMENTS as readonly string[]).includes(choice)) return again(tr.botReg.useButtons);
+      const set = new Set((state.data.interests ?? "").split(",").filter(Boolean));
+      if (set.has(choice)) set.delete(choice);
+      else set.add(choice);
+      const next: RegState = { step: "interests", data: { ...state.data, interests: parseInterests([...set]).join(",") } };
+      return { state: next, reply: { ...prompt(next), editInPlace: true } };
     }
     case "confirm": {
       if (choice === "restart") return go({ step: "fullName", data: { lang: state.data.lang } }, "fullName");
@@ -223,6 +246,7 @@ export function regNext(state: RegState, input: RegInput, today: EthDate): RegRe
           studentId: d.studentId,
           department: d.department as AcademicDepartment,
           lang: langOf(state),
+          interests: parseInterests((d.interests ?? "").split(",")),
           ...resolved.value,
         },
       };

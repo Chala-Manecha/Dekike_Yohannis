@@ -1,8 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/home";
 import type { loader as rootLoader } from "../root";
-import { GROUP } from "../config";
+import { GROUP, PLACES } from "../config";
 import { getDb, schema } from "../db";
 import { daysBetween, isoToEth, todayIso } from "../lib/dates";
 import { homeWindow } from "../lib/events";
@@ -31,8 +31,13 @@ export async function loader({ context }: Route.LoaderArgs) {
       .orderBy(desc(schema.photos.createdAt))
       .limit(HOME_GALLERY_MAX),
   ]);
+  const contacts = await db
+    .select({ id: schema.contacts.id, name: schema.contacts.name, role: schema.contacts.role, phone: schema.contacts.phone, telegram: schema.contacts.telegram })
+    .from(schema.contacts)
+    .orderBy(asc(schema.contacts.sort), asc(schema.contacts.name));
   return {
     photos,
+    contacts,
     dues: await getDues(db),
     events: events.map((e) => ({ ...e, eth: isoToEth(e.date), daysLeft: daysBetween(today, e.date) })),
   };
@@ -41,13 +46,13 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { lang, tr } = useT();
   const signedIn = Boolean(useRouteLoaderData<typeof rootLoader>("root")?.user);
-  const { events, dues, photos } = loaderData;
+  const { events, dues, photos, contacts } = loaderData;
   const h = tr.home;
 
   return (
     <div className="home">
       <section className="hero">
-        <p className="hero-uni">{tr.groupSub}</p>
+        <p className="hero-uni">{tr.places.university}</p>
         <h1>{tr.groupName}</h1>
         <p className="hero-tagline">{h.intro}</p>
         <div className="hero-actions">
@@ -108,6 +113,35 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <p>{h.duesStudent(dues.student)}</p>
           <p>{h.duesGraduate(dues.graduate)}</p>
         </div>
+        <div className="fact">
+          <h2>{tr.places.title}</h2>
+          <p className="place">
+            <span className="muted small">{tr.places.weMeetAt}</span>
+            <strong>{tr.places.church}</strong>
+            <a href={PLACES.churchMap} target="_blank" rel="noreferrer">📍 {tr.places.openMap}</a>
+          </p>
+          <p className="place">
+            <span className="muted small">{tr.places.weStudyAt}</span>
+            <strong>{tr.places.university}</strong>
+            <a href={PLACES.universityMap} target="_blank" rel="noreferrer">📍 {tr.places.openMap}</a>
+          </p>
+        </div>
+        {contacts.length > 0 && (
+          <div className="fact" id="contact">
+            <h2>{tr.contacts.title}</h2>
+            <ul className="contact-list">
+              {contacts.map((c) => (
+                <li key={c.id}>
+                  <strong>{c.name}</strong>{c.role && <span className="muted"> · {c.role}</span>}
+                  <div className="contact-ways">
+                    {c.phone && <a href={`tel:${c.phone}`}>📞 {c.phone}</a>}
+                    {c.telegram && <a href={`https://t.me/${c.telegram}`} target="_blank" rel="noreferrer">✈️ @{c.telegram}</a>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
     </div>
   );

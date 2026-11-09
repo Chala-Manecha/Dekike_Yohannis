@@ -14,6 +14,7 @@ import { createAuth } from "../lib/auth.server";
 import { createMember } from "../lib/members.server";
 import { hashPassword, passwordSchema } from "../lib/password";
 import { registrationSchema } from "../lib/registration";
+import { parseInterests, SERVICE_DEPARTMENTS } from "../lib/permissions";
 import { getUser } from "../lib/session.server";
 import { verifyTurnstile } from "../lib/turnstile.server";
 import { useT } from "../lib/use-t";
@@ -82,6 +83,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     studentId: d.studentId,
     department: d.department,
     lang: d.lang,
+    interests: parseInterests(form.getAll("interests")),
     ...resolved.value,
   };
   const error = await createMember(db, userId, member, today.year);
@@ -169,6 +171,14 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
             options={GRADUATION_MONTHS.map((m) => [String(m), tr.months[m - 1]] as [string, string])}
           />
         )}
+        <fieldset className="field">
+          <legend>{r.interests} <small>{r.interestsHint}</small></legend>
+          <div className="choices choices--wrap">
+            {SERVICE_DEPARTMENTS.map((d) => (
+              <label key={d}><input type="checkbox" name="interests" value={d} /> {tr.serviceDept[d]}</label>
+            ))}
+          </div>
+        </fieldset>
         <fieldset className="field password-fields">
           <legend>{r.passwordTitle} {loaderData.signedIn && <small>{r.passwordOptional}</small>}</legend>
           <Field label={r.password} hint={r.passwordHint} name="password" type="password" autoComplete="new-password" minLength={8} required={!loaderData.signedIn} error={err("password")} />

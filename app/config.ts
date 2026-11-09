@@ -4,6 +4,12 @@ export const GROUP = {
   nameEn: "St. John the Baptist Monthly Zikr", // browser tab title only
 };
 
+/** Where the group is and where it meets (names are in app/lib/i18n.ts → places). */
+export const PLACES = {
+  universityMap: "https://maps.app.goo.gl/SKE1ANMFRZnqUa2A7",
+  churchMap: "https://maps.app.goo.gl/QZucyBNEyitLCnDj7",
+};
+
 /** Starting dues in birr. Finance changes them in the app (/finance/settings). */
 export const DEFAULT_DUES = { student: 30, graduate: 100 } as const;
 export type Dues = { student: number; graduate: number };

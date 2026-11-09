@@ -74,7 +74,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     return send(chatId, reply.text, markup(reply, DICTS.om.botReg.sharePhone));
   }
 
-  async function continueRegistration(chatId: number, from: TgUser, state: RegState, input: RegInput) {
+  async function continueRegistration(chatId: number, from: TgUser, state: RegState, input: RegInput, tappedMessageId?: number) {
+    const removeTappedButtons = () => {
+      if (tappedMessageId) api("editMessageReplyMarkup", { chat_id: chatId, message_id: tappedMessageId, reply_markup: { inline_keyboard: [] } });
+    };
     const tr = t(state.data.lang === "am" ? "am" : "om");
     const result = regNext(state, input, toEth(new Date()));
 
@@ -84,6 +87,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     if (result.state === null) {
+      removeTappedButtons();
       const userId = await userForTelegram(db, { id: from.id, name: telegramName(from), username: from.username ?? null });
       const error = await createMember(db, userId, result.submit, toEth(new Date()).year);
       await db.delete(schema.botRegistrations).where(eq(schema.botRegistrations.chatId, String(chatId)));
@@ -96,6 +100,11 @@ export async function action({ request, context }: Route.ActionArgs) {
       .update(schema.botRegistrations)
       .set({ step: result.state.step, data: result.state.data, updatedAt: Date.now() })
       .where(eq(schema.botRegistrations.chatId, String(chatId)));
+    // Toggle buttons: redraw the same message with the new ticks
+    if (result.reply.editInPlace && tappedMessageId) {
+      return Response.json({ method: "editMessageText", chat_id: chatId, message_id: tappedMessageId, text: result.reply.text, reply_markup: markup(result.reply, tr.botReg.sharePhone) });
+    }
+    removeTappedButtons();
     return send(chatId, result.reply.text, markup(result.reply, tr.botReg.sharePhone));
   }
 
@@ -140,13 +149,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (cb?.message && cb.data?.startsWith("r:") && !cb.from.is_bot) {
     const chatId = cb.message.chat.id;
     api("answerCallbackQuery", { callback_query_id: cb.id });
-    // Remove the tapped buttons so an old question can't be answered twice
-    api("editMessageReplyMarkup", { chat_id: chatId, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } });
     const value = cb.data.slice(2);
-    if (value === "start") return beginRegistration(chatId, cb.from);
+    // Old questions lose their buttons so they can't be answered twice (except toggles, redrawn in place)
+    if (value === "start") {
+      api("editMessageReplyMarkup", { chat_id: chatId, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } });
+      return beginRegistration(chatId, cb.from);
+    }
     const session = await db.query.botRegistrations.findFirst({ where: eq(schema.botRegistrations.chatId, String(chatId)) });
     if (!session) return ok();
-    return continueRegistration(chatId, cb.from, { step: session.step as RegState["step"], data: session.data }, { kind: "choice", value });
+    return continueRegistration(chatId, cb.from, { step: session.step as RegState["step"], data: session.data }, { kind: "choice", value }, cb.message.message_id);
   }
 
   return ok();

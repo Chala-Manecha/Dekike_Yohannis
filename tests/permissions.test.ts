@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, canAssignRole, canResetPassword, canWorkTask, departmentOf, PERMISSIONS, ROLES, type Permission } from "../app/lib/permissions";
+import { can, canAssignRole, canResetPassword, parseInterests, canWorkTask, departmentOf, PERMISSIONS, ROLES, type Permission } from "../app/lib/permissions";
 
 const who = (p: Permission) => ROLES.filter((r) => can(r, p));
 
@@ -33,6 +33,13 @@ describe("can", () => {
   it("only Finance and admins record money; the leader only views", () => {
     expect(who("ledger:write")).toEqual(["finance", "admin"]);
     expect(can("leader", "finance:view")).toBe(true);
+  });
+  it("the members department (and leader/admin) keeps the contact list", () => {
+    expect(who("contact:manage")).toEqual(["members_coordinator", "leader", "admin"]);
+  });
+  it("keeps only real departments as interests", () => {
+    expect(parseInterests(["songs", "x", "finance", "songs"])).toEqual(["finance", "songs"]);
+    expect(parseInterests([])).toEqual([]);
   });
   it("only leader, preparation and admin manage event photos", () => {
     expect(who("photo:manage")).toEqual(["preparation", "leader", "admin"]);

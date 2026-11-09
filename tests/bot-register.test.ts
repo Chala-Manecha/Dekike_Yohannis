@@ -15,7 +15,7 @@ function run(inputs: RegInput[]) {
   return last!;
 }
 
-const student = [pick("om"), text("Abebe Kebede"), pick("skip"), pick("male"), { kind: "contact", phone: "251911234567" } as RegInput, text("ugr/123/12"), pick("cs"), pick("student"), pick("3"), pick("5")];
+const student = [pick("om"), text("Abebe Kebede"), pick("skip"), pick("male"), { kind: "contact", phone: "251911234567" } as RegInput, text("ugr/123/12"), pick("cs"), pick("student"), pick("3"), pick("5"), pick("songs"), pick("finance"), pick("songs"), pick("education"), pick("done")];
 
 describe("bot registration", () => {
   it("walks a student through every question to a summary", () => {
@@ -38,11 +38,21 @@ describe("bot registration", () => {
       studyYear: 3,
       graduationYear: 2020,
       graduationMonth: 5,
+      interests: ["finance", "education"],
     });
   });
 
+  it("toggles departments in place and allows choosing none", () => {
+    const base = [pick("om"), text("Abebe Kebede"), pick("skip"), pick("male"), text("0911234567"), text("ugr/7/12"), pick("cs"), pick("student"), pick("2"), pick("9")];
+    const first = run([...base, pick("songs")]);
+    expect(first.reply.editInPlace).toBe(true);
+    expect(first.reply.choices?.flat().find(([v]) => v === "songs")?.[1].startsWith("✅")).toBe(true);
+    const none = run([...base, pick("done"), pick("submit")]);
+    expect("submit" in none && none.submit.interests).toEqual([]);
+  });
+
   it("asks graduates for the year instead of the current year", () => {
-    const r = run([pick("am"), text("Hana T"), text("Mariam"), pick("female"), text("0911223344"), text("ugr/9/09"), pick("ee"), pick("graduate"), text("2015"), pick("9"), pick("submit")]);
+    const r = run([pick("am"), text("Hana T"), text("Mariam"), pick("female"), text("0911223344"), text("ugr/9/09"), pick("ee"), pick("graduate"), text("2015"), pick("9"), pick("done"), pick("submit")]);
     expect("submit" in r && r.submit).toMatchObject({ lang: "am", christianName: "Mariam", studyYear: null, graduationYear: 2015, graduationMonth: 9 });
   });
 

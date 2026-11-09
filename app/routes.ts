@@ -33,6 +33,7 @@ export default [
   route("property", "routes/property.tsx"),
   route("property/:id/photo", "routes/property.$id.photo.ts"),
   route("members", "routes/members.tsx"),
+  route("contacts", "routes/contacts.tsx"),
   route("receipts/:id", "routes/receipts.$id.ts"),
   route("lang", "routes/lang.ts"),
   route("logout", "routes/logout.ts"),

@@ -13,6 +13,7 @@ export type NewMember = {
   graduationYear: number;
   graduationMonth: number;
   studyYear: number | null;
+  interests: string[];
 };
 
 export type CreateMemberError = "studentIdTaken" | "alreadyMember";

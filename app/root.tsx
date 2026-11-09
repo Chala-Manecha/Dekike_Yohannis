@@ -15,7 +15,7 @@ import type { Route } from "./+types/root";
 import { LangChooser } from "./components/LangChooser";
 import { LangSwitch } from "./components/LangSwitch";
 import { TelegramMiniApp } from "./components/TelegramMiniApp";
-import { GROUP } from "./config";
+import { GROUP, PLACES } from "./config";
 import { t } from "./lib/i18n";
 import { chosenLang, DEFAULT_LANG, langCookie } from "./lib/lang";
 import { can } from "./lib/permissions";
@@ -46,6 +46,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       tasks: user ? can(user.role, "task:view") && !can(user.role, "event:manage") : false,
       finance: user ? can(user.role, "finance:view") : false,
       members: user ? can(user.role, "member:list") : false,
+      contacts: user ? can(user.role, "contact:manage") : false,
       feedback: user ? can(user.role, "feedback:read") : false,
       property: user ? can(user.role, "property:manage") : false,
     },
@@ -107,10 +108,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <main inert={askLang}>{children}</main>
         <footer className="site-footer" inert={askLang}>
           <div className="tilet tilet--thin" aria-hidden="true" />
-          <p>
+          <p className="footer-places">
+            <a href={PLACES.universityMap} target="_blank" rel="noreferrer">{tr.places.university}</a>
+            <span aria-hidden="true"> · </span>
+            <a href={PLACES.churchMap} target="_blank" rel="noreferrer">{tr.places.church}</a>
+          </p>
+          <p className="footer-links">
             <a href={GROUP.telegramGroup} target="_blank" rel="noreferrer">{tr.home.joinTelegram}</a>
+            <Link to="/#contact">{tr.contacts.title}</Link>
+            {data?.user && <Link to="/feedback">{tr.feedbackButton}</Link>}
           </p>
         </footer>
+        {data?.user && !location.pathname.startsWith("/feedback") && (
+          <Link to="/feedback" className="feedback-fab" aria-label={tr.feedbackButton}>
+            <span aria-hidden="true">💬</span> <span className="feedback-fab-label">{tr.feedbackButton}</span>
+          </Link>
+        )}
         <ScrollRestoration />
         <Scripts />
       </body>
