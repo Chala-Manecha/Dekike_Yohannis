@@ -1,10 +1,12 @@
 import { eq } from "drizzle-orm";
+import { useState } from "react";
 import { Form, redirect, useNavigation } from "react-router";
 import type { Route } from "./+types/register";
 import { Choice, Field } from "../components/Field";
 import { Turnstile } from "../components/Turnstile";
 import { getDb, schema } from "../db";
-import { checkClassFields } from "../lib/classyear";
+import { GRADUATION_MONTHS, PROGRAM_YEARS, type AcademicDepartment } from "../config";
+import { resolveClass } from "../lib/classyear";
 import { toEth } from "../lib/ethiopian";
 import type { Dict } from "../lib/i18n";
 import { registrationSchema } from "../lib/registration";
@@ -37,16 +39,42 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { formError: "fixFields" as ErrorKey, fieldErrors };
   }
   const today = toEth(new Date());
-  const classError = checkClassFields(parsed.data.graduationYear, parsed.data.studyYear, today);
-  if (classError) {
-    fieldErrors[classError === "classYear" ? "graduationYear" : "studyYear"] = classError;
+  const d = parsed.data;
+  const resolved = resolveClass(
+    d.standing === "graduate"
+      ? { standing: "graduate", department: d.department, graduationYear: d.graduationYear, graduationMonth: d.graduationMonth }
+      : { standing: "student", department: d.department, studyYear: d.studyYear, graduationMonth: d.graduationMonth },
+    today,
+  );
+  if (!resolved.ok) {
+    fieldErrors[resolved.field] = resolved.field === "graduationYear" ? "classYear" : "studyYear";
     return { formError: "fixFields" as ErrorKey, fieldErrors };
   }
 
-  await getDb(env.DB)
-    .insert(schema.members)
-    .values({ ...parsed.data, registeredYear: today.year, userId: user.id })
-    .onConflictDoNothing({ target: schema.members.userId });
+  const db = getDb(env.DB);
+  const taken = await db.query.members.findFirst({ where: eq(schema.members.studentId, d.studentId), columns: { id: true } });
+  if (taken) return { formError: "fixFields" as ErrorKey, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
+
+  try {
+    await db
+      .insert(schema.members)
+      .values({
+        fullName: d.fullName,
+        christianName: d.christianName,
+        gender: d.gender,
+        phone: d.phone,
+        studentId: d.studentId,
+        department: d.department,
+        lang: d.lang,
+        ...resolved.value,
+        registeredYear: today.year,
+        userId: user.id,
+      })
+      .onConflictDoNothing({ target: schema.members.userId });
+  } catch {
+    // Two people sending the same ID at the same moment: the unique index stops the second
+    return { formError: "fixFields" as ErrorKey, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
+  }
   throw redirect("/me?registered=1");
 }
 
@@ -54,6 +82,9 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
   const { lang, tr } = useT();
   const r = tr.register;
   const nav = useNavigation();
+  const [dept, setDept] = useState<AcademicDepartment | null>(null);
+  const [standing, setStanding] = useState<"student" | "graduate" | null>(null);
+  const maxYear = dept ? PROGRAM_YEARS[dept] : Math.max(...Object.values(PROGRAM_YEARS));
   const err = (k: string) => {
     const key = actionData?.fieldErrors?.[k];
     return key ? (tr.errors[key] as string) : undefined;
@@ -70,26 +101,56 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
         <Field label={r.christianName} hint={tr.optional} name="christianName" error={err("christianName")} />
         <Choice legend={r.gender} name="gender" error={err("gender")} options={[["male", r.male], ["female", r.female]]} />
         <Field label={r.phone} name="phone" type="tel" inputMode="tel" placeholder="09XX XXX XXX" error={err("phone")} required autoComplete="tel" />
-        <Choice legend={r.department} name="department" error={err("department")} options={[["cs", tr.dept.cs], ["it", tr.dept.it], ["ee", tr.dept.ee]]} stacked />
-        <Field
-          label={r.graduationYear}
-          hint={r.graduationHint}
-          name="graduationYear"
-          inputMode="numeric"
-          placeholder={String(loaderData.thisYear + 1)}
-          error={err("graduationYear")}
-          required
-        />
-        <label className="field">
-          <span>{r.studyYear} <small>{r.studyHint}</small></span>
-          <select name="studyYear" defaultValue="" aria-invalid={Boolean(err("studyYear"))}>
-            <option value="">—</option>
-            {[1, 2, 3, 4, 5, 6, 7].map((y) => (
-              <option key={y} value={y}>{tr.standing.year(y)}</option>
+        <Field label={r.studentId} hint={r.studentIdHint} name="studentId" error={err("studentId")} required autoCapitalize="characters" autoComplete="off" />
+        <fieldset className="field" aria-invalid={Boolean(err("department"))}>
+          <legend>{r.department}</legend>
+          <div className="choices choices--stacked">
+            {(["cs", "it", "ee"] as const).map((d) => (
+              <label key={d}><input type="radio" name="department" value={d} checked={dept === d} onChange={() => setDept(d)} /> {tr.dept[d]}</label>
             ))}
-          </select>
-          {err("studyYear") && <span className="field-error">{err("studyYear")}</span>}
-        </label>
+          </div>
+          {err("department") && <span className="field-error">{err("department")}</span>}
+        </fieldset>
+        <fieldset className="field" aria-invalid={Boolean(err("standing"))}>
+          <legend>{r.standing}</legend>
+          <div className="choices">
+            <label><input type="radio" name="standing" value="student" checked={standing === "student"} onChange={() => setStanding("student")} /> {r.standingStudent}</label>
+            <label><input type="radio" name="standing" value="graduate" checked={standing === "graduate"} onChange={() => setStanding("graduate")} /> {r.standingGraduate}</label>
+          </div>
+          {err("standing") && <span className="field-error">{err("standing")}</span>}
+        </fieldset>
+
+        {standing === "student" && (
+          <label className="field">
+            <span>{r.studyYear} <small>{r.studyHint}</small></span>
+            <select name="studyYear" defaultValue="" aria-invalid={Boolean(err("studyYear"))}>
+              <option value="">—</option>
+              {Array.from({ length: maxYear }, (_, i) => i + 1).map((y) => (
+                <option key={y} value={y}>{tr.standing.year(y)}</option>
+              ))}
+            </select>
+            {err("studyYear") && <span className="field-error">{err("studyYear")}</span>}
+          </label>
+        )}
+        {standing === "graduate" && (
+          <Field
+            label={r.graduationYear}
+            hint={r.graduationHint}
+            name="graduationYear"
+            inputMode="numeric"
+            placeholder={String(loaderData.thisYear - 2)}
+            error={err("graduationYear")}
+            required
+          />
+        )}
+        {standing && (
+          <Choice
+            legend={standing === "student" ? r.graduationMonthExpected : r.graduationMonth}
+            name="graduationMonth"
+            error={err("graduationMonth")}
+            options={GRADUATION_MONTHS.map((m) => [String(m), tr.months[m - 1]] as [string, string])}
+          />
+        )}
         <Choice legend={r.lang} name="lang" error={err("lang")} defaultValue={lang} options={[["om", "Afaan Oromoo"], ["am", "አማርኛ"]]} />
         <Turnstile siteKey={loaderData.turnstileSiteKey} />
         <button type="submit" className="btn btn-primary" disabled={nav.state === "submitting"}>

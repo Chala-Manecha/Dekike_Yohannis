@@ -11,8 +11,15 @@ export type Dues = { student: number; graduate: number };
 export const ACADEMIC_DEPARTMENTS = ["cs", "it", "ee"] as const;
 export type AcademicDepartment = (typeof ACADEMIC_DEPARTMENTS)[number];
 
-/** Ethiopian month graduation happens in; from this month on, that class counts as graduates. 11 = Hamle. */
-export const GRADUATION_MONTH = 11;
+/**
+ * Months Ambo University graduates in (Ethiopian month numbers): 5 = Tir, 9 = Ginbot.
+ * Each member says which one; from that month on they count as a graduate.
+ */
+export const GRADUATION_MONTHS = [5, 9] as const;
+export type GraduationMonth = (typeof GRADUATION_MONTHS)[number];
+
+/** Length of each programme in years. */
+export const PROGRAM_YEARS = { cs: 4, it: 4, ee: 5 } as const satisfies Record<AcademicDepartment, number>;
 
 /** Events appear on the homepage this many days before they happen. */
 export const EVENT_VISIBLE_DAYS = 3;

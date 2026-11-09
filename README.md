@@ -25,9 +25,12 @@ Telegram bot + Cron · Turnstile. Interface in **Afaan Oromoo (default) and Amha
 | A department's tasks | department leads | `/tasks` |
 | Read and track feedback | leader | `/feedback/inbox` |
 
-**Standing is calculated, not chosen.** Members give their graduation year (E.C.) and current year.
-The year goes up every Meskerem; the graduation year shows as **GC**; from Hamle of that year they count
-as graduates (`GRADUATION_MONTH` in `app/config.ts`). Dues follow automatically.
+**Registration** asks for the university student ID (unique: the same ID can't register twice) and
+"student or graduate". Graduates give the year and month (ጥር or ግንቦት) they graduated. Students give
+their current year and expected month; the graduation year is worked out from the programme length
+(CS/IT 4 years, EE 5: `PROGRAM_YEARS`, `GRADUATION_MONTHS` in `app/config.ts`).
+**Standing is calculated.** The year goes up every Meskerem; the graduation year shows as **GC**; from
+their graduation month they count as graduates. Dues follow automatically.
 
 **Dues** start at 30 birr (students) / 100 birr (graduates). Finance changes them at `/finance/settings`.
 Each contribution stores the rate and standing at the time, so changes never rewrite history.
@@ -64,7 +67,10 @@ A member only gets private messages if they allowed the bot when signing in with
 No phone number on any web page. `/login` gets a one-time code (10 min, HttpOnly cookie in that browser)
 and a button to `t.me/<bot>?start=login_<code>`. The member taps Start, then "Seeni / ግባ" under the bot's
 message; the webhook (`/api/telegram/webhook`, checked with `TELEGRAM_WEBHOOK_SECRET`) confirms the code
-and the waiting browser is signed in. Everyone who signs in has started the bot, so reminders reach them.
+and the waiting browser is signed in. If that browser was closed or reloaded meanwhile, the same code is
+reused, and the bot's message also gets an "open the website" button with a one-time link that signs in
+whichever browser opens it. Everyone who signs in has started the bot, so reminders reach them.
+Sessions end after **30 days without a visit** (each day with a visit extends it) or on sign-out.
 Code in `app/lib/bot-login.ts` (tested), `app/lib/telegram-plugin.server.ts`, `app/components/BotLogin.tsx`.
 
 ## Roles
@@ -97,7 +103,7 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 85 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 91 tests
 
 ## Next round
 Songs · property · full money in/out ledger.

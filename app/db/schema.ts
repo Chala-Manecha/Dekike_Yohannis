@@ -90,9 +90,12 @@ export const members = sqliteTable(
     christianName: text("christian_name"),
     gender: text("gender", { enum: ["male", "female"] }).notNull(),
     phone: text("phone").notNull(),
+    // University ID, upper-case. Unique so one person can't register twice (null only for rows from before it existed)
+    studentId: text("student_id"),
     department: text("department", { enum: ["cs", "it", "ee"] }).notNull(),
     // Student vs graduate is derived from these (app/lib/classyear.ts)
     graduationYear: integer("graduation_year").notNull(), // Ethiopian year
+    graduationMonth: integer("graduation_month").notNull().default(9), // Ethiopian month: 5 = Tir, 9 = Ginbot
     studyYear: integer("study_year"), // year of study at registration; null if already graduated
     registeredYear: integer("registered_year").notNull(), // Ethiopian year of registration
     lang: text("lang", { enum: ["om", "am"] }).notNull(),
@@ -103,7 +106,7 @@ export const members = sqliteTable(
     reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
     ...timestamps,
   },
-  (t) => [index("members_status_idx").on(t.status)],
+  (t) => [index("members_status_idx").on(t.status), uniqueIndex("members_student_id_unique").on(t.studentId)],
 );
 
 /** One uploaded payment (one receipt), covering one or more months. */
@@ -339,6 +342,8 @@ export const botLogins = sqliteTable(
     telegramId: text("telegram_id"),
     name: text("name"),
     username: text("username"),
+    // Sent only in the bot chat after confirming: lets the member finish signing in from any browser
+    claim: text("claim"),
     expiresAt: integer("expires_at").notNull(), // ms since epoch
     createdAt: integer("created_at").notNull(),
   },

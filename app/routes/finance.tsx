@@ -24,6 +24,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       fullName: schema.members.fullName,
       department: schema.members.department,
       graduationYear: schema.members.graduationYear,
+      graduationMonth: schema.members.graduationMonth,
       studyYear: schema.members.studyYear,
       registeredYear: schema.members.registeredYear,
       telegramUsername: schema.user.telegramUsername,

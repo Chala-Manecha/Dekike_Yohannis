@@ -30,7 +30,9 @@ export function createAuth(env: Env) {
       },
     },
     session: {
+      // Signed out after 30 days without a visit; each day with a visit pushes it 30 days on.
       expiresIn: 60 * 60 * 24 * 30,
+      updateAge: 60 * 60 * 24,
       // Saves a D1 read on most page loads
       cookieCache: { enabled: true, maxAge: 60 * 5 },
     },

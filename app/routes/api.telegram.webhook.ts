@@ -1,7 +1,7 @@
 import { and, eq, gt } from "drizzle-orm";
 import type { Route } from "./+types/api.telegram.webhook";
 import { getDb, schema } from "../db";
-import { isExpired, loginCallbackData, parseLoginCallback, parseStart, safeEqual, telegramName } from "../lib/bot-login";
+import { isExpired, loginCallbackData, newLoginCode, parseLoginCallback, parseStart, safeEqual, telegramName } from "../lib/bot-login";
 
 /**
  * Telegram calls this for messages to the bot and button taps (set up once with
@@ -18,7 +18,9 @@ type TgUpdate = {
 const SIGN_IN_TEXT =
   "🔐 Weebsaayitii Xoofoo Qulqulluu Yohaannisitti seenuuf \"Seeni\" tuqi. Yoo ati amma hin gaafatin ta'e, hin tuqin.\n\n" +
   "🔐 ወደ ቅዱስ ዮሐንስ ዝክር ድረ ገጽ ለመግባት \"ግባ\" የሚለውን ይጫኑ። እርስዎ አሁን ካልጠየቁ አይጫኑ።";
-const SIGNED_IN_TEXT = "✅ Seenteetta — gara weebsaayitii deebi'i.\n✅ ገብተዋል — ወደ ድረ ገጹ ይመለሱ።";
+const SIGNED_IN_TEXT =
+  "✅ Mirkanaa'eera — gara weebsaayitii deebi'i. Yoo achitti hin seenin ta'e, furtuu armaan gadii tuqi.\n" +
+  "✅ ተረጋግጧል — ወደ ድረ ገጹ ይመለሱ። እዚያ ካልገቡ ከታች ያለውን ቁልፍ ይጫኑ።";
 const EXPIRED_TEXT = "⌛ Yeroon darbeera. Weebsaayitii irraa irra deebi'ii yaali.\n⌛ ጊዜው አልፏል። ከድረ ገጹ እንደገና ይሞክሩ።";
 
 const reply = (body: Record<string, unknown>) => Response.json(body);
@@ -73,10 +75,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!code || cb.from.is_bot) return reply({ method: "answerCallbackQuery", callback_query_id: cb.id });
     const row = await db.query.botLogins.findFirst({ where: eq(schema.botLogins.code, code) });
     const valid = row && row.status === "pending" && !isExpired(row.expiresAt, now);
+    const claim = newLoginCode();
     if (valid) {
       await db
         .update(schema.botLogins)
-        .set({ status: "confirmed", telegramId: String(cb.from.id), name: telegramName(cb.from), username: cb.from.username ?? null })
+        .set({ status: "confirmed", telegramId: String(cb.from.id), name: telegramName(cb.from), username: cb.from.username ?? null, claim })
         .where(and(eq(schema.botLogins.code, code), eq(schema.botLogins.status, "pending")));
     }
     // Replace the button with the result (sent in the reply, so it works even without
@@ -89,7 +92,16 @@ export async function action({ request, context }: Route.ActionArgs) {
       }).catch(() => {}),
     );
     if (!cb.message) return ok();
-    return reply({ method: "editMessageText", chat_id: cb.message.chat.id, message_id: cb.message.message_id, text: valid ? SIGNED_IN_TEXT : EXPIRED_TEXT });
+    // If the browser that started the sign-in is gone (closed, other app), this button
+    // finishes signing in wherever it opens.
+    const claimUrl = `${site}/api/auth/bot-login/claim?c=${code}&k=${claim}`;
+    return reply({
+      method: "editMessageText",
+      chat_id: cb.message.chat.id,
+      message_id: cb.message.message_id,
+      text: valid ? SIGNED_IN_TEXT : EXPIRED_TEXT,
+      ...(valid ? { reply_markup: { inline_keyboard: [[{ text: "🌐 Weebsaayitii bani · ድረ ገጹን ክፈት", url: claimUrl }]] } } : {}),
+    });
   }
 
   return ok();

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-type Labels = { open: string; steps: string[]; waiting: string; expired: string; retry: string; failed: string };
+type Labels = { open: string; steps: string[]; waiting: string; expired: string; botHint: string; retry: string; failed: string };
 
 const POLL_MS = 2000;
 
@@ -50,6 +50,7 @@ export function BotLogin({ next, labels }: { next: string; labels: Labels }) {
         /* network blip: try again next tick */
       }
     }
+    poll(); // at once: after a reload the member may already have confirmed
     const timer = setInterval(poll, POLL_MS);
     const onBack = () => poll();
     document.addEventListener("visibilitychange", onBack);
@@ -83,6 +84,7 @@ export function BotLogin({ next, labels }: { next: string; labels: Labels }) {
       {(state === "expired" || state === "error") && (
         <p role="alert">
           <span className="form-error">{state === "expired" ? labels.expired : labels.failed}</span>{" "}
+          {state === "expired" && <span className="muted">{labels.botHint} </span>}
           <button type="button" className="btn btn-quiet btn-sm" onClick={start}>{labels.retry}</button>
         </p>
       )}

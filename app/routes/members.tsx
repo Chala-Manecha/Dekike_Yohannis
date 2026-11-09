@@ -21,9 +21,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       christianName: schema.members.christianName,
       department: schema.members.department,
       graduationYear: schema.members.graduationYear,
+      graduationMonth: schema.members.graduationMonth,
       studyYear: schema.members.studyYear,
       registeredYear: schema.members.registeredYear,
       phone: schema.members.phone,
+      studentId: schema.members.studentId,
       status: schema.members.status,
       telegramUsername: schema.user.telegramUsername,
       role: schema.user.role,
@@ -84,7 +86,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
 
   const cells = (m: Row) => (
     <>
-      <td>{m.fullName}{m.christianName && <small className="muted"> ({m.christianName})</small>}</td>
+      <td>{m.fullName}{m.christianName && <small className="muted"> ({m.christianName})</small>}{m.studentId && <><br /><small className="muted">{m.studentId}</small></>}</td>
       <td>{tr.dept[m.department]}</td>
       <td>{standingLabel(lang, m.standing)}</td>
       <td><a href={`tel:${m.phone}`}>{m.phone}</a></td>

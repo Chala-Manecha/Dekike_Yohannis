@@ -8,18 +8,19 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const next = safeRedirect(new URL(request.url).searchParams.get("next"), "/me");
   if (await getUser(request, env)) throw redirect(next);
-  return { next, devLogin: import.meta.env.DEV };
+  return { next, devLogin: import.meta.env.DEV, expired: new URL(request.url).searchParams.has("expired") };
 }
 
 export default function Login({ loaderData }: Route.ComponentProps) {
   const { tr } = useT();
-  const { next, devLogin } = loaderData;
+  const { next, devLogin, expired } = loaderData;
   const l = tr.login;
   return (
     <section className="page narrow">
       <h1>{tr.login.title}</h1>
       <p>{tr.login.intro}</p>
-      <BotLogin next={next} labels={{ open: l.openBot, steps: l.steps, waiting: l.waiting, expired: l.expired, retry: l.retry, failed: l.failed }} />
+      {expired && <p className="form-error" role="alert">{l.expired}</p>}
+      <BotLogin next={next} labels={{ open: l.openBot, steps: l.steps, waiting: l.waiting, expired: l.expired, botHint: l.botHint, retry: l.retry, failed: l.failed }} />
       {devLogin && <DevLogin next={next} />}
     </section>
   );

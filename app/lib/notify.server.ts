@@ -24,6 +24,7 @@ export async function loadPlanMembers(db: Db, now = new Date()): Promise<PlanMem
       name: schema.members.fullName,
       lang: schema.members.lang,
       graduationYear: schema.members.graduationYear,
+      graduationMonth: schema.members.graduationMonth,
       studyYear: schema.members.studyYear,
       registeredYear: schema.members.registeredYear,
       telegramId: schema.user.telegramId,
