@@ -1,4 +1,5 @@
 import {
+  data,
   isRouteErrorResponse,
   Link,
   Links,
@@ -10,10 +11,11 @@ import {
   useRouteLoaderData,
 } from "react-router";
 import type { Route } from "./+types/root";
+import { LangChooser } from "./components/LangChooser";
 import { LangSwitch } from "./components/LangSwitch";
 import { GROUP } from "./config";
 import { t } from "./lib/i18n";
-import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
+import { chosenLang, DEFAULT_LANG, langCookie } from "./lib/lang";
 import { can } from "./lib/permissions";
 import { getUser } from "./lib/session.server";
 import "./app.css";
@@ -29,8 +31,12 @@ export const links: Route.LinksFunction = () => [
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = await getUser(request, context.cloudflare.env);
-  return {
-    lang: langFromCookie(request.headers.get("Cookie")),
+  const chosen = chosenLang(request.headers.get("Cookie"));
+  // Renew the cookie on page loads so the choice never expires for regular visitors.
+  const headers = chosen && request.method === "GET" ? { "Set-Cookie": langCookie(chosen) } : undefined;
+  return data({
+    lang: chosen ?? DEFAULT_LANG,
+    langChosen: chosen !== null,
     user,
     nav: {
       events: user ? can(user.role, "event:manage") : false,
@@ -39,13 +45,17 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       members: user ? can(user.role, "member:list") : false,
       feedback: user ? can(user.role, "feedback:read") : false,
     },
-  };
+  }, { headers });
 }
+
+export const headers: Route.HeadersFunction = ({ loaderHeaders }) => loaderHeaders;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useRouteLoaderData<typeof loader>("root");
   const lang = data?.lang ?? DEFAULT_LANG;
   const tr = t(lang);
+  // First visit: nothing else is usable until they pick a language.
+  const askLang = Boolean(data && !data.langChosen);
   return (
     <html lang={lang}>
       <head>
@@ -56,7 +66,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        <header className="site-header">
+        {askLang && <LangChooser />}
+        <header className="site-header" inert={askLang}>
           <Link to="/" className="wordmark">
             <span>{tr.groupName}</span>
             <small>{tr.groupSub}</small>
@@ -73,8 +84,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
           {data && <LangSwitch current={lang} />}
         </header>
-        <main>{children}</main>
-        <footer className="site-footer">
+        <main inert={askLang}>{children}</main>
+        <footer className="site-footer" inert={askLang}>
           <div className="tilet tilet--thin" aria-hidden="true" />
           <p>
             <a href={GROUP.telegramGroup} target="_blank" rel="noreferrer">{tr.home.joinTelegram}</a>

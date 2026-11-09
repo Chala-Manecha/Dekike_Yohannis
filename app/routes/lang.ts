@@ -1,6 +1,6 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/lang";
-import { LANG_COOKIE, parseLang } from "../lib/lang";
+import { langCookie, parseLang } from "../lib/lang";
 import { safeRedirect } from "../lib/session.server";
 
 export async function action({ request }: Route.ActionArgs) {
@@ -8,7 +8,7 @@ export async function action({ request }: Route.ActionArgs) {
   const lang = parseLang(form.get("lang"));
   return redirect(safeRedirect(form.get("redirectTo")), {
     headers: {
-      "Set-Cookie": `${LANG_COOKIE}=${lang}; Path=/; Max-Age=31536000; SameSite=Lax`,
+      "Set-Cookie": langCookie(lang),
     },
   });
 }

@@ -7,6 +7,7 @@ import type { Lang } from "./lang";
 const am = {
   groupName: "የቅዱስ ዮሐንስ መጥምቅ ወርሃዊ ዝክር",
   groupSub: "ኮምፒውተር ሳይንስ · ኢንፎርሜሽን ቴክኖሎጂ · ኤሌክትሪካል ምህንድስና",
+  chooseLang: "ቋንቋ ይምረጡ",
   months: ["መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት", "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"],
   birr: "ብር",
   optional: "አማራጭ",
@@ -256,6 +257,7 @@ export type Dict = typeof am;
 const om: Dict = {
   groupName: "Xoofoo Ji'aa Qulqulluu Yohaannis Cuuphaa",
   groupSub: "Saayinsii Kompiitaraa · Teeknooloojii Odeeffannoo · Injinariingii Elektirikaalaa",
+  chooseLang: "Afaan filadhaa",
   months: ["Fulbaana", "Onkoloolessa", "Sadaasa", "Muddee", "Amajjii", "Guraandhala", "Bitootessa", "Ebla", "Caamsaa", "Waxabajjii", "Adoolessa", "Hagayya", "Qaammee"],
   birr: "birrii",
   optional: "dirqama miti",
