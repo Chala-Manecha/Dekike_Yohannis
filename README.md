@@ -55,10 +55,10 @@ npx wrangler d1 execute DB --remote --command "UPDATE user SET role='admin' WHER
 
 ## Setup (same Cloudflare account as project-1)
 1. `npm install`, `cp .dev.vars.example .dev.vars`
-2. `npx wrangler d1 create yohannes-zikr-db` → put the id in `wrangler.jsonc` (never project-1's database)
-3. R2 → create bucket `yohannes-zikr-receipts`, keep it private
+2. `npx wrangler d1 create dekike-yohannis-db` → put the id in `wrangler.jsonc` (never project-1's database)
+3. R2 → create bucket `dekike-yohannis-receipts`, keep it private
 4. `npm run db:migrate:remote`
-5. Bot: `/setdomain` → `yohannes-zikr.henon1918.workers.dev`; set `TELEGRAM_BOT_USERNAME`
+5. Bot: `/setdomain` → `dekike-yohannis.henon1918.workers.dev`; set `TELEGRAM_BOT_USERNAME`
 6. Group id: add the bot to the group as **admin**, send any message in the group, open
    `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id` (starts with `-100`) into `TELEGRAM_GROUP_CHAT_ID`
 7. Worker secrets: `BETTER_AUTH_SECRET`, `TELEGRAM_BOT_TOKEN`, `TURNSTILE_SECRET_KEY`
