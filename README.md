@@ -15,6 +15,8 @@ Telegram bot + Cron · Turnstile. Interface in **Afaan Oromoo (default) and Amha
 | Upload photos, captions, choose homepage photos, delete | preparation · leader | `/events/:id/photos` |
 | Registration: department, graduation year, current year | members | `/register` |
 | Month-by-month dues, upload payment screenshot, history | members | `/me` |
+| Learning materials: browse by department, year, course, type; suggest a file | active members | `/materials` |
+| Approve or return suggested materials, delete | education · leader | `/materials` |
 | Feedback to the leader (can be anonymous) | members | `/feedback` |
 | Approve registrations, member list, assign roles | coordinator · leader | `/members` |
 | Review contributions, monthly paid/unpaid, set dues | finance (leader: read-only) | `/finance` |
@@ -38,6 +40,12 @@ Each contribution stores the rate and standing at the time, so changes never rew
 photo, so the Worker only checks and stores them. Stored in R2 under `photos/` and served publicly at
 `/photos/<id>.webp` with a one-year cache; receipts in the same bucket stay private. "Show on homepage"
 puts a photo in the moving gallery (latest 24; it pauses on hover and stays still for reduced-motion users).
+
+**Learning materials** (አለማዊ ትምህርት). PDF, images, Word, PowerPoint up to 20 MB. A member's file
+waits for Education's approval; Education's own uploads appear at once. The file is sent as the raw
+request body and streamed into R2 (`materials/<id>`), so large PDFs cost almost no Worker CPU.
+Only active members (and reviewers) can list or open files. A department filter also shows
+"all departments" files, a year filter also shows "any year" files. Returned files are deleted from R2.
 
 ## Telegram notifications (automatic)
 
@@ -77,11 +85,10 @@ Trigger the cron locally: open `http://localhost:5173/cdn-cgi/handler/scheduled`
 ## Code map
 `app/config.ts` group settings · `app/lib/i18n.ts` all text · `app/lib/ethiopian.ts` calendar ·
 `app/lib/classyear.ts` standing · `app/lib/notify.ts` who gets which message (pure, tested) ·
-`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/db/schema.ts` tables · `tests/` 72 tests
+`app/lib/notify.server.ts` queue + sending + cron · `app/lib/photos.ts` photo checks and keys · `app/lib/materials.ts` material rules · `app/db/schema.ts` tables · `tests/` 82 tests
 
 ## Next round
-Learning materials (አለማዊ ትምህርት: exams, assignments, PDFs; members only) · songs · property ·
-full money in/out ledger.
+Songs · property · full money in/out ledger.
 
 ## Scripts
 `npm run dev` · `npm test` · `npm run typecheck` · `npm run build` · `npm run db:generate`

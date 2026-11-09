@@ -294,7 +294,39 @@ export const photos = sqliteTable(
   (t) => [index("photos_event_idx").on(t.eventId, t.createdAt), index("photos_featured_idx").on(t.featured, t.createdAt)],
 );
 
+/**
+ * Learning materials (አለማዊ ትምህርት). File in R2 at materials/<id>. Members suggest,
+ * Education approves (status). department "all" = every department; studyYear null = any year.
+ */
+export const materials = sqliteTable(
+  "materials",
+  {
+    id: id(),
+    title: text("title").notNull(),
+    course: text("course").notNull(),
+    department: text("department", { enum: ["cs", "it", "ee", "all"] }).notNull(),
+    studyYear: integer("study_year"),
+    kind: text("kind", { enum: ["exam", "assignment", "note", "other"] }).notNull(),
+    fileName: text("file_name").notNull(),
+    fileType: text("file_type").notNull(),
+    fileSize: integer("file_size").notNull(),
+    status: text("status", { enum: ["pending", "approved", "rejected"] })
+      .notNull()
+      .default("pending"),
+    uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("materials_status_idx").on(t.status, t.createdAt),
+    index("materials_filter_idx").on(t.status, t.department, t.studyYear),
+    index("materials_uploader_idx").on(t.uploadedBy),
+  ],
+);
+
 export type Member = typeof members.$inferSelect;
 export type Contribution = typeof contributions.$inferSelect;
 export type Event = typeof events.$inferSelect;
 export type Photo = typeof photos.$inferSelect;
+export type Material = typeof materials.$inferSelect;

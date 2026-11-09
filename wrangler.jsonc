@@ -5,6 +5,8 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "workers_dev": true,
+  "preview_urls": false,
   "d1_databases": [
     {
       "binding": "DB",
@@ -20,7 +22,7 @@
   "triggers": { "crons": ["*/30 * * * *"] },
   "vars": {
     "PUBLIC_SITE_URL": "https://dekike-yohannis.henon1918.workers.dev",
-    "TELEGRAM_BOT_USERNAME": "REPLACE_WITH_BOT_USERNAME",
+    "TELEGRAM_BOT_USERNAME": "DekikeYohannis_bot",
     // Group chat id (like -1001234567890). Add the bot to the group as admin; see README.
     "TELEGRAM_GROUP_CHAT_ID": "",
     // Cloudflare's always-pass test key. Replace with the real site key.

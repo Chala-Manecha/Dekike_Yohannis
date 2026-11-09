@@ -330,3 +330,21 @@ th { color: var(--stone); font-weight: 600; }
 .photo-caption { display: flex; gap: 0.35rem; }
 .photo-caption input { flex: 1; min-width: 0; width: 100%; }
 .photo-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+
+/* ---------- Learning materials ---------- */
+.upload-panel { margin: 1.5rem 0; }
+.upload-panel summary { cursor: pointer; font-weight: 600; color: var(--lapis); }
+.field-row { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); }
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 2rem 0 1rem; }
+.filters input, .filters select { font: inherit; padding: 0.4rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: inherit; min-width: 0; }
+.filters input { flex: 1 1 14rem; }
+.review-queue { border-color: var(--gold); margin: 1.5rem 0; }
+.course-group h2 { font-size: var(--step-1); margin: 2rem 0 0.5rem; }
+.materials { list-style: none; padding: 0; margin: 0; }
+.material { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+.material-main { display: grid; gap: 0.15rem; flex: 1 1 16rem; min-width: 0; }
+.material-main a { overflow-wrap: anywhere; }
+.material-actions { display: flex; align-items: center; gap: 0.5rem; }
+.badge--exam { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+.badge--assignment { background: color-mix(in srgb, var(--gold) 22%, transparent); color: var(--lapis-ink); }
+.badge--note { background: color-mix(in srgb, #2f7d4f 16%, transparent); color: #2f7d4f; }
