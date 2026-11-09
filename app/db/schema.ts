@@ -1,0 +1,277 @@
+import { sql } from "drizzle-orm";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+const timestamps = {
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`)
+    .$onUpdate(() => new Date()),
+};
+
+/* ---------- Better Auth tables (names/fields must match Better Auth's model) ---------- */
+
+export const user = sqliteTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  // Telegram gives no email; telegram users get a placeholder under .invalid
+  email: text("email").notNull().unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
+  image: text("image"),
+  role: text("role").notNull().default("member"),
+  telegramId: text("telegram_id").unique(),
+  telegramUsername: text("telegram_username"),
+  ...timestamps,
+});
+
+export const session = sqliteTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    token: text("token").notNull().unique(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    ...timestamps,
+  },
+  (t) => [index("session_user_idx").on(t.userId)],
+);
+
+export const account = sqliteTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: integer("access_token_expires_at", { mode: "timestamp_ms" }),
+    refreshTokenExpiresAt: integer("refresh_token_expires_at", { mode: "timestamp_ms" }),
+    scope: text("scope"),
+    password: text("password"),
+    ...timestamps,
+  },
+  (t) => [index("account_user_idx").on(t.userId)],
+);
+
+export const verification = sqliteTable("verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  ...timestamps,
+});
+
+/* ---------- Group tables ---------- */
+
+const id = () =>
+  text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID());
+
+export const members = sqliteTable(
+  "members",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    fullName: text("full_name").notNull(),
+    christianName: text("christian_name"),
+    gender: text("gender", { enum: ["male", "female"] }).notNull(),
+    phone: text("phone").notNull(),
+    department: text("department", { enum: ["cs", "it", "ee"] }).notNull(),
+    // Student vs graduate is derived from these (app/lib/classyear.ts)
+    graduationYear: integer("graduation_year").notNull(), // Ethiopian year
+    studyYear: integer("study_year"), // year of study at registration; null if already graduated
+    registeredYear: integer("registered_year").notNull(), // Ethiopian year of registration
+    lang: text("lang", { enum: ["om", "am"] }).notNull(),
+    status: text("status", { enum: ["pending", "active", "rejected", "inactive"] })
+      .notNull()
+      .default("pending"),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (t) => [index("members_status_idx").on(t.status)],
+);
+
+/** One uploaded payment (one receipt), covering one or more months. */
+export const contributions = sqliteTable(
+  "contributions",
+  {
+    id: id(),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(), // birr
+    // Rate and standing when submitted, so past records survive rate changes
+    monthlyRate: integer("monthly_rate").notNull(),
+    memberKind: text("member_kind", { enum: ["student", "graduate"] }).notNull(),
+    months: text("months", { mode: "json" }).$type<[number, number][]>().notNull(),
+    reason: text("reason"),
+    receiptKey: text("receipt_key").notNull(), // private R2 object key
+    status: text("status", { enum: ["pending", "approved", "rejected"] })
+      .notNull()
+      .default("pending"),
+    reviewNote: text("review_note"),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (t) => [index("contributions_status_idx").on(t.status), index("contributions_member_idx").on(t.memberId)],
+);
+
+/**
+ * Months claimed by pending or approved contributions. The unique index makes
+ * the database refuse paying the same month twice. Rows are removed when a
+ * contribution is returned, so the member can resubmit.
+ */
+export const contributionMonths = sqliteTable(
+  "contribution_months",
+  {
+    contributionId: text("contribution_id")
+      .notNull()
+      .references(() => contributions.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    ethYear: integer("eth_year").notNull(),
+    ethMonth: integer("eth_month").notNull(),
+  },
+  (t) => [
+    uniqueIndex("contribution_months_unique").on(t.memberId, t.ethYear, t.ethMonth),
+    index("contribution_months_period_idx").on(t.ethYear, t.ethMonth),
+  ],
+);
+
+/** Small key/value settings (dues, cron bookkeeping). Values are JSON. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value", { mode: "json" }).notNull(),
+  updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
+export const EVENT_TYPES = ["zikr", "welcome", "farewell", "other"] as const;
+
+export const events = sqliteTable(
+  "events",
+  {
+    id: id(),
+    type: text("type", { enum: EVENT_TYPES }).notNull(),
+    title: text("title"), // optional for zikr (a default title is shown)
+    description: text("description"),
+    date: text("date").notNull(), // Gregorian YYYY-MM-DD (Addis Ababa date)
+    time: text("time"), // free text, e.g. "8:00 ጠዋት"
+    place: text("place"),
+    // For zikr: the contribution month this zikr belongs to
+    dueYear: integer("due_year"),
+    dueMonth: integer("due_month"),
+    status: text("status", { enum: ["scheduled", "cancelled"] })
+      .notNull()
+      .default("scheduled"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("events_date_idx").on(t.date),
+    // One zikr per Ethiopian month (other types leave due_* null, which SQLite treats as distinct)
+    uniqueIndex("events_zikr_month_unique").on(t.type, t.dueYear, t.dueMonth),
+  ],
+);
+
+/** Running order of an event (ዝግጅት ክፍል): opening prayer, teaching, songs… */
+export const eventProgram = sqliteTable(
+  "event_program",
+  {
+    id: id(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    sort: integer("sort").notNull(),
+    part: text("part").notNull(),
+    person: text("person"),
+  },
+  (t) => [index("event_program_event_idx").on(t.eventId)],
+);
+
+export const SERVICE_DEPARTMENTS = ["members", "finance", "songs", "property", "preparation", "education"] as const;
+
+/** Work the leader assigns to a department ahead of an event. */
+export const eventTasks = sqliteTable(
+  "event_tasks",
+  {
+    id: id(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    department: text("department", { enum: SERVICE_DEPARTMENTS }).notNull(),
+    task: text("task").notNull(),
+    status: text("status", { enum: ["open", "done"] })
+      .notNull()
+      .default("open"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    doneBy: text("done_by").references(() => user.id, { onDelete: "set null" }),
+    doneAt: integer("done_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (t) => [index("event_tasks_dept_idx").on(t.department, t.status)],
+);
+
+export const FEEDBACK_CATEGORIES = ["suggestion", "complaint", "question", "appreciation"] as const;
+
+/** Members → leader. Anonymous feedback stores no user. */
+export const feedback = sqliteTable(
+  "feedback",
+  {
+    id: id(),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    category: text("category", { enum: FEEDBACK_CATEGORIES }).notNull(),
+    message: text("message").notNull(),
+    status: text("status", { enum: ["new", "seen", "resolved"] })
+      .notNull()
+      .default("new"),
+    leaderNote: text("leader_note"),
+    handledBy: text("handled_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("feedback_status_idx").on(t.status)],
+);
+
+/**
+ * Telegram messages waiting to be sent. The cron drains it in batches
+ * (Workers free plan limits outgoing requests per run). dedupeKey stops the
+ * same reminder being queued twice.
+ */
+export const outbox = sqliteTable(
+  "outbox",
+  {
+    id: id(),
+    dedupeKey: text("dedupe_key").notNull().unique(),
+    chatId: text("chat_id").notNull(),
+    text: text("text").notNull(),
+    status: text("status", { enum: ["pending", "sent", "failed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    error: text("error"),
+    sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (t) => [index("outbox_status_idx").on(t.status, t.createdAt)],
+);
+
+export type Member = typeof members.$inferSelect;
+export type Contribution = typeof contributions.$inferSelect;
+export type Event = typeof events.$inferSelect;

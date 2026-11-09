@@ -1,0 +1,39 @@
+{
+  "name": "yohannes-zikr",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "preview": "npm run build && vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "typegen": "wrangler types && react-router typegen",
+    "typecheck": "npm run typegen && tsc",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
+  },
+  "dependencies": {
+    "@react-router/node": "^7",
+    "better-auth": "^1.7.14",
+    "drizzle-orm": "^0.45.4",
+    "isbot": "^5.2.2",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-router": "^7",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1",
+    "@react-router/dev": "^7",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31",
+    "typescript": "^5",
+    "vite": "^7",
+    "vitest": "^3",
+    "wrangler": "^4"
+  }
+}

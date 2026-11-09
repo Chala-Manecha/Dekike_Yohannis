@@ -1,0 +1,21 @@
+import { type RouteConfig, index, route } from "@react-router/dev/routes";
+
+export default [
+  index("routes/home.tsx"),
+  route("login", "routes/login.tsx"),
+  route("register", "routes/register.tsx"),
+  route("me", "routes/me.tsx"),
+  route("events", "routes/events.tsx"),
+  route("events/:id", "routes/events.$id.tsx"),
+  route("tasks", "routes/tasks.tsx"),
+  route("feedback", "routes/feedback.tsx"),
+  route("feedback/inbox", "routes/feedback.inbox.tsx"),
+  route("finance", "routes/finance.tsx"),
+  route("finance/month", "routes/finance.month.tsx"),
+  route("finance/settings", "routes/finance.settings.tsx"),
+  route("members", "routes/members.tsx"),
+  route("receipts/:id", "routes/receipts.$id.ts"),
+  route("lang", "routes/lang.ts"),
+  route("logout", "routes/logout.ts"),
+  route("api/auth/*", "routes/api.auth.ts"),
+] satisfies RouteConfig;

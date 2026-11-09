@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yohannes-zikr",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yohannes-zikr-db",
+      // Create a NEW database for this project: npx wrangler d1 create yohannes-zikr-db
+      "database_id": "REPLACE_WITH_NEW_D1_ID",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  // Private bucket for payment screenshots. Never enable public access on it.
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "yohannes-zikr-receipts" }],
+  // Every 30 min: daily planning after 08:00 Addis + sending queued Telegram messages
+  "triggers": { "crons": ["*/30 * * * *"] },
+  "vars": {
+    "PUBLIC_SITE_URL": "https://yohannes-zikr.henon1918.workers.dev",
+    "TELEGRAM_BOT_USERNAME": "REPLACE_WITH_BOT_USERNAME",
+    // Group chat id (like -1001234567890). Add the bot to the group as admin; see README.
+    "TELEGRAM_GROUP_CHAT_ID": "",
+    // Cloudflare's always-pass test key. Replace with the real site key.
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+  }
+  // Secrets (dashboard or `wrangler secret put`): BETTER_AUTH_SECRET, TELEGRAM_BOT_TOKEN, TURNSTILE_SECRET_KEY
+}
