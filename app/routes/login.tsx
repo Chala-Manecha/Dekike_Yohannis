@@ -8,7 +8,7 @@ import { useT } from "../lib/use-t";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  const next = safeRedirect(new URL(request.url).searchParams.get("next"), "/me");
+  const next = safeRedirect(new URL(request.url).searchParams.get("next"), "/dashboard");
   if (await getUser(request, env)) throw redirect(next);
   return { next, botUsername: env.TELEGRAM_BOT_USERNAME, devLogin: import.meta.env.DEV };
 }
@@ -16,7 +16,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 /** Student ID + password, checked by the auth server (lockout after repeated wrong passwords). */
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
-  const next = safeRedirect(form.get("next"), "/me");
+  const next = safeRedirect(form.get("next"), "/dashboard");
   const res = await createAuth(context.cloudflare.env).api.studentLogin({
     body: { studentId: String(form.get("studentId") ?? ""), password: String(form.get("password") ?? "") },
     headers: request.headers,

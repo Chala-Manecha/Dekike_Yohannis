@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { registrationSchema, reviewMemberTransition } from "../app/lib/registration";
+import { registrationSchema, reviewMemberTransition, studentIdKey } from "../app/lib/registration";
 import { safeRedirect } from "../app/lib/session.server";
 
 const valid = {
@@ -30,6 +30,22 @@ describe("registrationSchema", () => {
 
   it.each(["", "ab", "<script>", "a".repeat(31)])("rejects student ID %s", (studentId) => {
     expect(registrationSchema.safeParse({ ...valid, studentId }).success).toBe(false);
+  });
+
+  it("accepts names in English only", () => {
+    expect(registrationSchema.parse({ ...valid, fullName: "  Bulto   Gemechu  ", christianName: "Gebre-Mariam" })).toMatchObject({ fullName: "Bulto Gemechu", christianName: "Gebre-Mariam" });
+    expect(registrationSchema.parse({ ...valid, fullName: "Tolosa Bulto'aa" }).fullName).toBe("Tolosa Bulto'aa");
+    const am = registrationSchema.safeParse({ ...valid, fullName: "አበበ ከበደ" });
+    expect(am.success).toBe(false);
+    expect(am.error?.issues[0].message).toBe("englishOnly");
+    expect(registrationSchema.safeParse({ ...valid, christianName: "ገብረ ማርያም" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...valid, fullName: "Abebe 2" }).success).toBe(false);
+  });
+
+  it("treats differently typed IDs as the same student", () => {
+    expect(studentIdKey("UGR/1234/12")).toBe("UGR123412");
+    expect(studentIdKey("ugr 1234-12")).toBe("UGR123412");
+    expect(studentIdKey(" Ugr.1234.12 ")).toBe("UGR123412");
   });
 
   it("only offers Tir and Ginbot as graduation months", () => {

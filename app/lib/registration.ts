@@ -8,13 +8,24 @@ export const ethiopianPhone = z
   .refine((s) => /^(\+251|251|0)[79]\d{8}$/.test(s), "phone")
   .transform((s) => "+251" + s.replace(/^(\+251|251|0)/, ""));
 
-const optionalText = (max: number) =>
+/** Names are stored in English (Latin letters) so every list reads the same in both languages. */
+export const LATIN_NAME = /^[A-Za-z][A-Za-z .'-]*$/;
+export const englishName = (max: number) =>
   z
     .string()
     .trim()
-    .max(max)
+    .transform((s) => s.replace(/\s+/g, " "))
+    .refine((s) => s.length >= 3 && s.length <= max, "fullName")
+    .refine((s) => LATIN_NAME.test(s), "englishOnly");
+
+const optionalEnglish = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, "englishOnly")
     .optional()
-    .transform((s) => (s ? s : null));
+    .transform((s) => (s ? s.replace(/\s+/g, " ") : null))
+    .refine((s) => s === null || LATIN_NAME.test(s), "englishOnly");
 
 const optionalInt = (message: string) =>
   z
@@ -23,6 +34,14 @@ const optionalInt = (message: string) =>
     .optional()
     .transform((s) => (s ? Number(s) : null))
     .refine((n) => n === null || Number.isInteger(n), message);
+
+/**
+ * Compares IDs however they were typed: "UGR/1234/12", "ugr 1234-12" and "UGR123412" are the same
+ * student. Stored in members.student_id_key (unique), so the same person can't register twice.
+ */
+export function studentIdKey(id: string) {
+  return id.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
 
 /** University ID as printed on the card, e.g. "UGR/12345/12". Stored upper-case, single spaces. */
 export const studentIdSchema = z
@@ -33,8 +52,8 @@ export const studentIdSchema = z
 
 /** Error messages are i18n keys (see app/lib/i18n.ts → errors). Standing is checked by resolveClass(). */
 export const registrationSchema = z.object({
-  fullName: z.string().trim().min(3, "fullName").max(80, "fullName"),
-  christianName: optionalText(60),
+  fullName: englishName(80),
+  christianName: optionalEnglish(60),
   gender: z.enum(["male", "female"], { message: "choose" }),
   phone: ethiopianPhone,
   studentId: studentIdSchema,

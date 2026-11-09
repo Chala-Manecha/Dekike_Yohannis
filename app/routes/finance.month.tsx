@@ -1,10 +1,12 @@
-import { and, eq } from "drizzle-orm";
-import { Form, Link } from "react-router";
+import { Form, Link, useSearchParams } from "react-router";
 import type { Route } from "./+types/finance.month";
-import { getDb, schema } from "../db";
+import { Chips } from "../components/Chips";
+import { ACADEMIC_DEPARTMENTS } from "../config";
+import { getDb } from "../db";
+import { countBy, matchesSearch, pickParam } from "../lib/dashboard";
 import { addMonths, currentDueMonth, toEth, type EthMonth } from "../lib/ethiopian";
+import { monthPayRows } from "../lib/finance.server";
 import { formatEth, standingLabel } from "../lib/i18n";
-import { classInfo } from "../lib/classyear";
 import { requirePermission } from "../lib/session.server";
 import { useT } from "../lib/use-t";
 
@@ -15,103 +17,78 @@ function parseMonth(v: string | null, fallback: EthMonth): EthMonth {
   return month >= 1 && month <= 12 ? { year: Number(m[1]), month } : fallback;
 }
 
+/** Every active member's dues for one month, filterable by department, student/graduate and status. */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   await requirePermission(request, env, "finance:view");
-  const current = currentDueMonth(toEth(new Date()));
-  const selected = parseMonth(new URL(request.url).searchParams.get("m"), current);
-  const db = getDb(env.DB);
-
-  const activeMembers = await db
-    .select({
-      id: schema.members.id,
-      fullName: schema.members.fullName,
-      department: schema.members.department,
-      graduationYear: schema.members.graduationYear,
-      graduationMonth: schema.members.graduationMonth,
-      studyYear: schema.members.studyYear,
-      registeredYear: schema.members.registeredYear,
-      phone: schema.members.phone,
-      telegramUsername: schema.user.telegramUsername,
-    })
-    .from(schema.members)
-    .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
-    .where(eq(schema.members.status, "active"));
-
-  const claims = await db
-    .select({
-      memberId: schema.contributionMonths.memberId,
-      status: schema.contributions.status,
-      amount: schema.contributions.amount,
-      monthsCount: schema.contributions.months,
-    })
-    .from(schema.contributionMonths)
-    .innerJoin(schema.contributions, eq(schema.contributions.id, schema.contributionMonths.contributionId))
-    .where(and(eq(schema.contributionMonths.ethYear, selected.year), eq(schema.contributionMonths.ethMonth, selected.month)));
-
-  const byMember = new Map(claims.map((c) => [c.memberId, c]));
-  // A payment covering several months is split evenly across them for the monthly total.
-  const collected = claims
-    .filter((c) => c.status === "approved")
-    .reduce((sum, c) => sum + c.amount / c.monthsCount.length, 0);
-
   const today = toEth(new Date());
-  const rows = activeMembers.map((m) => ({ ...m, standing: classInfo(m, today), status: byMember.get(m.id)?.status ?? "unpaid" }));
+  const current = currentDueMonth(today);
+  const selected = parseMonth(new URL(request.url).searchParams.get("m"), current);
+  const { rows, collected } = await monthPayRows(getDb(env.DB), selected, today);
   const options = Array.from({ length: 12 }, (_, i) => addMonths(current, -i));
-  return { selected, options, rows, collected: Math.round(collected) };
+  return { selected, options, rows: rows.sort((a, b) => a.fullName.localeCompare(b.fullName)), collected };
 }
+
+const STATUSES = ["unpaid", "pending", "approved"] as const;
 
 export default function FinanceMonth({ loaderData }: Route.ComponentProps) {
   const { lang, tr } = useT();
   const f = tr.finance;
-  const { rows, selected, options, collected } = loaderData;
-  const paid = rows.filter((r) => r.status === "approved");
-  const pending = rows.filter((r) => r.status === "pending");
-  const unpaid = rows.filter((r) => r.status === "unpaid");
+  const d = tr.dashboard;
+  const { rows: all, selected, options, collected } = loaderData;
+  const [params] = useSearchParams();
+  const dept = pickParam(params.get("dept"), ACADEMIC_DEPARTMENTS);
+  const standing = pickParam(params.get("standing"), ["student", "graduate"] as const);
+  const status = pickParam(params.get("status"), STATUSES);
+  const q = params.get("q") ?? "";
+
+  const searched = all.filter((m) => matchesSearch(q, [m.fullName, m.studentId, m.phone, m.telegramUsername]));
+  const byDept = searched.filter((m) => (!standing || m.kind === standing) && (!status || m.status === status));
+  const byStanding = searched.filter((m) => (!dept || m.department === dept) && (!status || m.status === status));
+  const byStatus = searched.filter((m) => (!dept || m.department === dept) && (!standing || m.kind === standing));
+  const rows = byDept.filter((m) => !dept || m.department === dept);
+  const statusLabel = { unpaid: d.unpaid, pending: d.pending, approved: d.paid } as const;
 
   return (
     <section className="page wide">
       <p><Link to="/finance">← {f.title}</Link></p>
       <h1>{f.monthTitle}: {formatEth(lang, selected)}</h1>
-      <Form method="get" className="inline-form">
-        <label>
-          {f.chooseMonth}{" "}
-          <select name="m" defaultValue={`${selected.year}-${selected.month}`}>
-            {options.map((o) => (
-              <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{formatEth(lang, o)}</option>
-            ))}
-          </select>
-        </label>
+      <Form method="get" className="list-tools">
+        {[...params.entries()].filter(([k]) => k !== "m" && k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+        <select name="m" defaultValue={`${selected.year}-${selected.month}`} aria-label={f.chooseMonth}>
+          {options.map((o) => <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{formatEth(lang, o)}</option>)}
+        </select>
+        <input type="search" name="q" defaultValue={q} placeholder={tr.members.search} aria-label={tr.members.search} />
         <button className="btn btn-quiet btn-sm">{f.show}</button>
       </Form>
 
-      <dl className="stats">
-        <div><dt>{f.collected}</dt><dd>{collected} {tr.birr}</dd></div>
-        <div><dt>{f.paidCount}</dt><dd>{paid.length}</dd></div>
-        <div><dt>{f.pendingCount}</dt><dd>{pending.length}</dd></div>
-        <div><dt>{f.unpaidCount}</dt><dd>{unpaid.length}</dd></div>
-      </dl>
+      <div className="tiles">
+        <div className="tile tile--green"><strong>{collected.toLocaleString("en-US")} {tr.birr}</strong><span>{d.collected}</span></div>
+      </div>
 
-      <h2>{f.unpaidList}</h2>
+      <Chips label={tr.members.status} param="status" value={status} allLabel={tr.members.all}
+        options={STATUSES.map((s) => [s, statusLabel[s]])} counts={countBy(byStatus, STATUSES, (m) => m.status)} />
+      <Chips label={tr.members.department} param="dept" value={dept} allLabel={tr.members.all}
+        options={ACADEMIC_DEPARTMENTS.map((x) => [x, tr.dept[x]])} counts={countBy(byDept, ACADEMIC_DEPARTMENTS, (m) => m.department)} />
+      <Chips label={tr.members.standing} param="standing" value={standing} allLabel={tr.members.all}
+        options={[["student", d.students], ["graduate", d.graduates]]} counts={countBy(byStanding, ["student", "graduate"] as const, (m) => m.kind)} />
+
       <div className="table-wrap">
-        <table>
+        <table className="table-oneline">
           <thead>
-            <tr><th>{tr.members.name}</th><th>{tr.members.department}</th><th>{tr.members.standing}</th><th>{tr.members.phone}</th><th>{tr.members.telegram}</th></tr>
+            <tr><th>{tr.members.name}</th><th>ID</th><th>{tr.members.department}</th><th>{tr.members.standing}</th><th>{tr.members.status}</th><th>{tr.members.phone}</th><th>{tr.members.telegram}</th></tr>
           </thead>
           <tbody>
-            {unpaid.map((m) => (
+            {rows.length === 0 && <tr><td colSpan={7} className="muted">{tr.members.none}</td></tr>}
+            {rows.map((m) => (
               <tr key={m.id}>
-                <td>{m.fullName}</td>
+                <td><strong>{m.fullName}</strong></td>
+                <td>{m.studentId ?? "—"}</td>
                 <td>{tr.dept[m.department]}</td>
                 <td>{standingLabel(lang, m.standing)}</td>
+                <td><span className={`pill pill--${m.status === "unpaid" ? "rejected" : m.status}`}>{statusLabel[m.status]}</span></td>
                 <td><a href={`tel:${m.phone}`}>{m.phone}</a></td>
-                <td>
-                  {m.telegramUsername ? (
-                    <a href={`https://t.me/${m.telegramUsername}`} target="_blank" rel="noreferrer">{f.contact}</a>
-                  ) : (
-                    <span className="muted">{f.noTelegram}</span>
-                  )}
-                </td>
+                <td>{m.telegramUsername ? <a href={`https://t.me/${m.telegramUsername}`} target="_blank" rel="noreferrer">@{m.telegramUsername}</a> : <span className="muted">{f.noTelegram}</span>}</td>
               </tr>
             ))}
           </tbody>

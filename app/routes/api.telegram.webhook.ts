@@ -7,6 +7,8 @@ import { prompt, regNext, START, type RegInput, type RegReply, type RegState } f
 import { toEth } from "../lib/ethiopian";
 import { DICTS, t } from "../lib/i18n";
 import { createMember, memberForUser } from "../lib/members.server";
+import { newRegistrationNotices } from "../lib/notices";
+import { notify, recipientsWithRoles } from "../lib/notices.server";
 
 /**
  * Telegram calls this for messages to the bot and button taps (set up once with
@@ -93,6 +95,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       await db.delete(schema.botRegistrations).where(eq(schema.botRegistrations.chatId, String(chatId)));
       if (error === "studentIdTaken") return send(chatId, `${tr.errors.studentIdTaken}\n/register`);
       if (error === "alreadyMember") return send(chatId, tr.botReg.already, openButton(tr.botReg.openBtn));
+      const created = await memberForUser(db, userId);
+      if (created) {
+        notify(env, ctx, newRegistrationNotices(await recipientsWithRoles(db, ["members_coordinator"]), {
+          id: created.id, name: result.submit.fullName, department: result.submit.department, graduate: result.submit.studyYear === null,
+        }, site));
+      }
       return send(chatId, result.reply.text, openButton(tr.botReg.openBtn));
     }
 

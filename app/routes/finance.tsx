@@ -9,6 +9,8 @@ import { toEth } from "../lib/ethiopian";
 import { requirePermission } from "../lib/session.server";
 import { can } from "../lib/permissions";
 import { useT } from "../lib/use-t";
+import { paymentReviewedNotice } from "../lib/notices";
+import { notify, recipientForUser } from "../lib/notices.server";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
@@ -48,7 +50,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   const note = String(form.get("note") ?? "").trim().slice(0, 300) || null;
 
   const db = getDb(env.DB);
-  const c = await db.query.contributions.findFirst({ where: eq(schema.contributions.id, id), columns: { status: true } });
+  const c = await db
+    .select({ status: schema.contributions.status, amount: schema.contributions.amount, months: schema.contributions.months, userId: schema.members.userId })
+    .from(schema.contributions)
+    .innerJoin(schema.members, eq(schema.members.id, schema.contributions.memberId))
+    .where(eq(schema.contributions.id, id))
+    .get();
   if (!c) throw new Response("Not found", { status: 404 });
   const next = reviewContributionTransition(c.status, decision);
   if (!next) return { message: "already" as const };
@@ -63,6 +70,11 @@ export async function action({ request, context }: Route.ActionArgs) {
   } else {
     await update;
   }
+  notify(
+    env,
+    context.cloudflare.ctx,
+    paymentReviewedNotice(await recipientForUser(db, c.userId), { id, amount: c.amount, months: c.months, approved: next === "approved", note }, env.PUBLIC_SITE_URL),
+  );
   return { message: next };
 }
 

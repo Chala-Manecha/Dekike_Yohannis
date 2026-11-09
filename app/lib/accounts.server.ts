@@ -7,6 +7,7 @@
  */
 import { and, eq } from "drizzle-orm";
 import { schema, type Db } from "../db";
+import { studentIdKey } from "./registration";
 
 export const TELEGRAM = "telegram";
 export const PASSWORD = "password";
@@ -102,5 +103,6 @@ export async function clearPassword(db: Db, userId: string) {
 }
 
 export async function memberByStudentId(db: Db, studentId: string) {
-  return db.query.members.findFirst({ where: eq(schema.members.studentId, studentId), columns: { id: true, userId: true } });
+  // Matched by key, so "UGR/1/12" finds a member registered as "ugr 1-12"
+  return db.query.members.findFirst({ where: eq(schema.members.studentIdKey, studentIdKey(studentId)), columns: { id: true, userId: true } });
 }

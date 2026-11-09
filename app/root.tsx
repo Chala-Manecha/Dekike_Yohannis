@@ -18,7 +18,7 @@ import { TelegramMiniApp } from "./components/TelegramMiniApp";
 import { GROUP, PLACES } from "./config";
 import { t } from "./lib/i18n";
 import { chosenLang, DEFAULT_LANG, langCookie } from "./lib/lang";
-import { can } from "./lib/permissions";
+import { can, hasDashboard } from "./lib/permissions";
 import { getUser } from "./lib/session.server";
 import { useEffect, useState } from "react";
 import "./app.css";
@@ -42,6 +42,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     langChosen: chosen !== null,
     user,
     nav: {
+      dashboard: user ? hasDashboard(user.role) : false,
       events: user ? can(user.role, "event:manage") : false,
       tasks: user ? can(user.role, "task:view") && !can(user.role, "event:manage") : false,
       finance: user ? can(user.role, "finance:view") : false,
@@ -90,6 +91,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
           )}
           <nav aria-label="Main" id="main-nav" className={menuReady ? (menuOpen ? "is-open" : "is-closed") : undefined}>
+            {data?.nav.dashboard && <NavLink to="/dashboard">{tr.nav.dashboard}</NavLink>}
             <NavLink to="/" end>{tr.nav.home}</NavLink>
             <NavLink to="/gallery">{tr.nav.gallery}</NavLink>
             {data?.user && <NavLink to="/materials">{tr.nav.materials}</NavLink>}

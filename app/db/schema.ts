@@ -92,6 +92,8 @@ export const members = sqliteTable(
     phone: text("phone").notNull(),
     // University ID, upper-case. Unique so one person can't register twice (null only for rows from before it existed)
     studentId: text("student_id"),
+    // studentIdKey(): letters and digits only, so "UGR/1/12" and "ugr 1-12" count as the same ID
+    studentIdKey: text("student_id_key"),
     department: text("department", { enum: ["cs", "it", "ee"] }).notNull(),
     // Student vs graduate is derived from these (app/lib/classyear.ts)
     graduationYear: integer("graduation_year").notNull(), // Ethiopian year
@@ -108,7 +110,11 @@ export const members = sqliteTable(
     reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
     ...timestamps,
   },
-  (t) => [index("members_status_idx").on(t.status), uniqueIndex("members_student_id_unique").on(t.studentId)],
+  (t) => [
+    index("members_status_idx").on(t.status),
+    uniqueIndex("members_student_id_unique").on(t.studentId),
+    uniqueIndex("members_student_id_key_unique").on(t.studentIdKey),
+  ],
 );
 
 /** One uploaded payment (one receipt), covering one or more months. */

@@ -9,9 +9,11 @@ import { GRADUATION_MONTHS, PROGRAM_YEARS, type AcademicDepartment } from "../co
 import { resolveClass } from "../lib/classyear";
 import { toEth } from "../lib/ethiopian";
 import type { Dict } from "../lib/i18n";
-import { createUser, setPasswordHash } from "../lib/accounts.server";
+import { createUser, memberByStudentId, setPasswordHash } from "../lib/accounts.server";
 import { createAuth } from "../lib/auth.server";
 import { createMember } from "../lib/members.server";
+import { newRegistrationNotices, welcomeNotice } from "../lib/notices";
+import { notify, recipientForUser, recipientsWithRoles } from "../lib/notices.server";
 import { hashPassword, passwordSchema } from "../lib/password";
 import { registrationSchema } from "../lib/registration";
 import { parseInterests, SERVICE_DEPARTMENTS } from "../lib/permissions";
@@ -71,7 +73,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const db = getDb(env.DB);
-  if (await db.query.members.findFirst({ where: eq(schema.members.studentId, d.studentId), columns: { id: true } })) {
+  if (await memberByStudentId(db, d.studentId)) {
     return { formError: "fixFields" as ErrorKey, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
   }
   const userId = user?.id ?? (await createUser(db, d.fullName));
@@ -83,12 +85,21 @@ export async function action({ request, context }: Route.ActionArgs) {
     studentId: d.studentId,
     department: d.department,
     lang: d.lang,
-    interests: parseInterests(form.getAll("interests")),
+    // Only current students choose departments to serve in
+    interests: d.standing === "student" ? parseInterests(form.getAll("interests")) : [],
     ...resolved.value,
   };
   const error = await createMember(db, userId, member, today.year);
   if (error === "studentIdTaken") return { formError: "fixFields" as ErrorKey, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
   if (password) await setPasswordHash(db, userId, await hashPassword(password));
+  const created = await db.query.members.findFirst({ where: eq(schema.members.userId, userId), columns: { id: true } });
+  if (created) {
+    const graduate = d.standing === "graduate";
+    notify(env, context.cloudflare.ctx, [
+      ...welcomeNotice(await recipientForUser(db, userId), created.id, d.fullName),
+      ...newRegistrationNotices(await recipientsWithRoles(db, ["members_coordinator"]), { id: created.id, name: d.fullName, department: d.department, graduate }, env.PUBLIC_SITE_URL),
+    ]);
+  }
   if (user) throw redirect("/me?registered=1");
 
   // New on the website: sign them straight in with the ID and password they just chose
@@ -114,11 +125,12 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
     <section className="page narrow">
       <h1>{r.title}</h1>
       <p className="intro">{r.intro}</p>
+      <p className="english-note" lang="en"><strong>Please use English.</strong> {r.englishNote}</p>
       {actionData?.formError && <p className="form-error" role="alert">{tr.errors[actionData.formError] as string}</p>}
 
       <Form method="post" className="form" noValidate>
-        <Field label={r.fullName} name="fullName" error={err("fullName")} defaultValue={loaderData.userName} required autoComplete="name" />
-        <Field label={r.christianName} hint={tr.optional} name="christianName" error={err("christianName")} />
+        <Field label={r.fullName} hint="e.g. Abebe Kebede" name="fullName" error={err("fullName")} defaultValue={/^[A-Za-z .'-]+$/.test(loaderData.userName) ? loaderData.userName : ""} required autoComplete="name" lang="en" pattern="[A-Za-z][A-Za-z .'\-]*" />
+        <Field label={r.christianName} hint={`${tr.optional} · e.g. Gebre Mariam`} name="christianName" error={err("christianName")} lang="en" pattern="[A-Za-z][A-Za-z .'\-]*" />
         <Choice legend={r.gender} name="gender" error={err("gender")} options={[["male", r.male], ["female", r.female]]} />
         <Field label={r.phone} name="phone" type="tel" inputMode="tel" placeholder="09XX XXX XXX" error={err("phone")} required autoComplete="tel" />
         <Field label={r.studentId} hint={r.studentIdHint} name="studentId" error={err("studentId")} required autoCapitalize="characters" autoComplete="off" />
@@ -171,6 +183,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
             options={GRADUATION_MONTHS.map((m) => [String(m), tr.months[m - 1]] as [string, string])}
           />
         )}
+        {standing === "student" && (
         <fieldset className="field">
           <legend>{r.interests} <small>{r.interestsHint}</small></legend>
           <div className="choices choices--wrap">
@@ -179,6 +192,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
             ))}
           </div>
         </fieldset>
+        )}
         <fieldset className="field password-fields">
           <legend>{r.passwordTitle} {loaderData.signedIn && <small>{r.passwordOptional}</small>}</legend>
           <Field label={r.password} hint={r.passwordHint} name="password" type="password" autoComplete="new-password" minLength={8} required={!loaderData.signedIn} error={err("password")} />

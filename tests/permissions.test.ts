@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, canAssignRole, canResetPassword, parseInterests, canWorkTask, departmentOf, PERMISSIONS, ROLES, type Permission } from "../app/lib/permissions";
+import { can, canAssignRole, canResetPassword, hasDashboard, parseInterests, canWorkTask, departmentOf, PERMISSIONS, ROLES, type Permission } from "../app/lib/permissions";
 
 const who = (p: Permission) => ROLES.filter((r) => can(r, p));
 
@@ -40,6 +40,9 @@ describe("can", () => {
   it("keeps only real departments as interests", () => {
     expect(parseInterests(["songs", "x", "finance", "songs"])).toEqual(["finance", "songs"]);
     expect(parseInterests([])).toEqual([]);
+  });
+  it("every department role gets a dashboard, plain members don't", () => {
+    expect(ROLES.filter(hasDashboard)).toEqual(ROLES.filter((r) => r !== "member"));
   });
   it("only leader, preparation and admin manage event photos", () => {
     expect(who("photo:manage")).toEqual(["preparation", "leader", "admin"]);

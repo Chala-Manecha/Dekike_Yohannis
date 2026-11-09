@@ -78,6 +78,13 @@
       "when": 1794258400875,
       "tag": "0010_interests_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794262228948,
+      "tag": "0011_student_id_key",
+      "breakpoints": true
     }
   ]
 }

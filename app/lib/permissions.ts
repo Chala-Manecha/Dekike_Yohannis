@@ -101,3 +101,8 @@ export function parseInterests(values: unknown[]): ServiceDepartment[] {
   const set = new Set(values.map(String));
   return SERVICE_DEPARTMENTS.filter((d) => set.has(d));
 }
+
+/** Roles with something to manage get a dashboard; plain members use "My page". */
+export function hasDashboard(role: unknown) {
+  return (["member:list", "finance:view", "event:manage", "task:view", "song:manage", "property:manage", "education:manage", "feedback:read"] as const).some((p) => can(role, p));
+}

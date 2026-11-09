@@ -2,10 +2,11 @@ import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/me.account";
 import { Field } from "../components/Field";
 import { getDb } from "../db";
-import { getPasswordHash, setPasswordHash, telegramIdForUser } from "../lib/accounts.server";
+import { getPasswordHash, memberByStudentId, setPasswordHash, telegramIdForUser } from "../lib/accounts.server";
 import type { Dict } from "../lib/i18n";
 import { hashPassword, passwordSchema, verifyPassword } from "../lib/password";
 import { parseInterests, SERVICE_DEPARTMENTS } from "../lib/permissions";
+import { studentIdKey, studentIdSchema } from "../lib/registration";
 import { requireUser } from "../lib/session.server";
 import { useT } from "../lib/use-t";
 import { eq } from "drizzle-orm";
@@ -21,6 +22,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const member = await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { studentId: true, interests: true } });
   return {
     studentId: member?.studentId ?? null,
+    isMember: Boolean(member),
     interests: member ? member.interests : null,
     hasPassword: Boolean(await getPasswordHash(db, user.id)),
     telegram: (await telegramIdForUser(db, user.id)) ? (user.telegramUsername ? `@${user.telegramUsername}` : "✓") : null,
@@ -33,6 +35,21 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = await requireUser(request, env);
   const db = getDb(env.DB);
   const form = await request.formData();
+  // Members from before student IDs existed add theirs once (needed to sign in on the website)
+  if (form.get("intent") === "studentId") {
+    const member = await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true, studentId: true } });
+    if (!member || member.studentId) throw new Response("Bad request", { status: 400 });
+    const parsed = studentIdSchema.safeParse(form.get("studentId") ?? "");
+    if (!parsed.success) return { saved: false, interestsSaved: false, fieldErrors: { studentId: "studentId" as ErrorKey } };
+    const taken = await memberByStudentId(db, parsed.data);
+    if (taken) return { saved: false, interestsSaved: false, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
+    try {
+      await db.update(schema.members).set({ studentId: parsed.data, studentIdKey: studentIdKey(parsed.data) }).where(eq(schema.members.id, member.id));
+    } catch {
+      return { saved: false, interestsSaved: false, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
+    }
+    return { saved: false, interestsSaved: false, fieldErrors: {} as Record<string, ErrorKey> };
+  }
   if (form.get("intent") === "interests") {
     await db.update(schema.members).set({ interests: parseInterests(form.getAll("interests")) }).where(eq(schema.members.userId, user.id));
     return { saved: false, interestsSaved: true, fieldErrors: {} as Record<string, ErrorKey> };
@@ -57,7 +74,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
     const key = actionData?.fieldErrors?.[k];
     return key ? (tr.errors[key] as string) : undefined;
   };
-  const { studentId, hasPassword, telegram, botUsername, interests } = loaderData;
+  const { studentId, hasPassword, telegram, botUsername, interests, isMember } = loaderData;
 
   return (
     <section className="page narrow">
@@ -66,7 +83,16 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
 
       <dl className="facts">
         <dt>{tr.register.studentId}</dt>
-        <dd>{studentId ?? "—"}</dd>
+        <dd>
+          {studentId ?? (isMember ? (
+            <Form method="post" className="inline-form">
+              <input type="hidden" name="intent" value="studentId" />
+              <input name="studentId" placeholder={tr.register.studentIdHint} aria-label={tr.register.studentId} required autoCapitalize="characters" />
+              <button className="btn btn-quiet btn-sm" disabled={busy}>{tr.save}</button>
+              {err("studentId") && <span className="field-error">{err("studentId")}</span>}
+            </Form>
+          ) : "—")}
+        </dd>
         <dt>Telegram</dt>
         <dd>
           {telegram ?? (

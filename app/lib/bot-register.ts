@@ -78,9 +78,9 @@ export function prompt(state: RegState, error?: string): RegReply {
     case "lang":
       return { text: q(`${DICTS.om.botReg.chooseLang}\n${DICTS.am.botReg.chooseLang}`), choices: [[["om", "Afaan Oromoo"], ["am", "አማርኛ"]]] };
     case "fullName":
-      return { text: q(`${b.step(1)} ${r.fullName}?`) };
+      return { text: q(`${b.step(1)} ${r.fullName}? ${b.inEnglish}`) };
     case "christianName":
-      return { text: q(`${b.step(2)} ${r.christianName}? (${tr.optional})`), choices: [[["skip", b.skip]]] };
+      return { text: q(`${b.step(2)} ${r.christianName}? (${tr.optional}) ${b.inEnglish}`), choices: [[["skip", b.skip]]] };
     case "gender":
       return { text: q(`${b.step(3)} ${r.gender}?`), choices: [[["male", r.male], ["female", r.female]]] };
     case "phone":
@@ -131,7 +131,7 @@ function summary(state: RegState) {
     `${r.department}: ${tr.dept[d.department as AcademicDepartment]}`,
     d.standing === "student" ? `${r.studyYear}: ${tr.standing.year(Number(d.studyYear))}` : `${r.graduationYear}: ${d.graduationYear}`,
     `${d.standing === "student" ? r.graduationMonthExpected : r.graduationMonth}: ${tr.months[Number(d.graduationMonth) - 1]}`,
-    `${r.interests}: ${parseInterests((d.interests ?? "").split(",")).map((x) => tr.serviceDept[x]).join(", ") || "—"}`,
+    ...(d.standing === "student" ? [`${r.interests}: ${parseInterests((d.interests ?? "").split(",")).map((x) => tr.serviceDept[x]).join(", ") || "—"}`] : []),
   ];
   return lines.join("\n");
 }
@@ -158,12 +158,14 @@ export function regNext(state: RegState, input: RegInput, today: EthDate): RegRe
     }
     case "fullName": {
       const p = shape.fullName.safeParse(text);
-      return p.success ? go(state, "christianName", { fullName: p.data }) : again(err.fullName);
+      if (p.success) return go(state, "christianName", { fullName: p.data });
+      return again(p.error.issues[0]?.message === "englishOnly" ? err.englishOnly : err.fullName);
     }
     case "christianName": {
       if (choice === "skip") return go(state, "gender", { christianName: "" });
-      if (!text || text.length > 60) return again(tr.botReg.useButtons);
-      return go(state, "gender", { christianName: text });
+      const p = shape.christianName.safeParse(text);
+      if (!text || !p.success) return again(err.englishOnly);
+      return go(state, "gender", { christianName: p.data ?? "" });
     }
     case "gender": {
       const v = pick(["male", "female"]);
@@ -213,7 +215,8 @@ export function regNext(state: RegState, input: RegInput, today: EthDate): RegRe
         const back: RegState = { step: d.standing === "graduate" ? "graduationYear" : "studyYear", data: d };
         return { state: back, reply: prompt(back, resolved.field === "graduationYear" ? err.classYear : err.studyYear) };
       }
-      return go(state, "interests", { graduationMonth: v });
+      // Only current students choose departments to serve in
+      return go(state, d.standing === "student" ? "interests" : "confirm", { graduationMonth: v });
     }
     case "interests": {
       if (choice === "done") return go(state, "confirm");
@@ -246,7 +249,7 @@ export function regNext(state: RegState, input: RegInput, today: EthDate): RegRe
           studentId: d.studentId,
           department: d.department as AcademicDepartment,
           lang: langOf(state),
-          interests: parseInterests((d.interests ?? "").split(",")),
+          interests: d.standing === "student" ? parseInterests((d.interests ?? "").split(",")) : [],
           ...resolved.value,
         },
       };

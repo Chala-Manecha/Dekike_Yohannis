@@ -52,8 +52,16 @@ describe("bot registration", () => {
   });
 
   it("asks graduates for the year instead of the current year", () => {
-    const r = run([pick("am"), text("Hana T"), text("Mariam"), pick("female"), text("0911223344"), text("ugr/9/09"), pick("ee"), pick("graduate"), text("2015"), pick("9"), pick("done"), pick("submit")]);
-    expect("submit" in r && r.submit).toMatchObject({ lang: "am", christianName: "Mariam", studyYear: null, graduationYear: 2015, graduationMonth: 9 });
+    const r = run([pick("am"), text("Hana Tesfaye"), text("Mariam"), pick("female"), text("0911223344"), text("ugr/9/09"), pick("ee"), pick("graduate"), text("2015"), pick("9"), pick("submit")]);
+    expect("submit" in r && r.submit).toMatchObject({ lang: "am", christianName: "Mariam", studyYear: null, graduationYear: 2015, graduationMonth: 9, interests: [] });
+  });
+
+  it("asks names in English only", () => {
+    const r = run([pick("am"), text("ሃና ተስፋዬ")]);
+    expect(r.state?.step).toBe("fullName");
+    expect(r.reply.text).toContain("Please use English");
+    const c = run([pick("om"), text("Hana Tesfaye"), text("ማርያም")]);
+    expect(c.state?.step).toBe("christianName");
   });
 
   it("repeats a question with the reason on a bad answer", () => {
@@ -73,6 +81,12 @@ describe("bot registration", () => {
   it("asks the webhook to check the student ID", () => {
     const r = run([pick("om"), text("Abebe Kebede"), pick("skip"), pick("male"), text("0911234567"), text(" ugr/55/12 ")]);
     expect("checkStudentId" in r && r.checkStudentId).toBe("UGR/55/12");
+  });
+
+  it("doesn't ask graduates about departments", () => {
+    const r = run([pick("om"), text("Abebe Kebede"), pick("skip"), pick("male"), text("0911234567"), text("ugr/3/08"), pick("cs"), pick("graduate"), text("2015"), pick("5")]);
+    expect(r.state?.step).toBe("confirm");
+    expect(r.reply.text).not.toContain("tajaajiluu");
   });
 
   it("sends a graduate whose date hasn't passed back to the year question", () => {

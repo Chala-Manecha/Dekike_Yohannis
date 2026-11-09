@@ -11,6 +11,8 @@ import { currentDueMonth, monthKey, toEth, type EthMonth } from "../lib/ethiopia
 import { formatEth, standingLabel } from "../lib/i18n";
 import { requireUser } from "../lib/session.server";
 import { markSignedOut } from "../components/TelegramMiniApp";
+import { paymentSubmittedNotices } from "../lib/notices";
+import { notify, recipientsWithRoles } from "../lib/notices.server";
 import { useT } from "../lib/use-t";
 import { useState } from "react";
 
@@ -134,6 +136,15 @@ export async function action({ request, context }: Route.ActionArgs) {
     throw e;
   }
 
+  notify(
+    env,
+    context.cloudflare.ctx,
+    paymentSubmittedNotices(
+      await recipientsWithRoles(db, ["finance"]),
+      { id, name: member.fullName, amount: parsed.data.amount, months: months.map((m: EthMonth) => [m.year, m.month] as [number, number]) },
+      env.PUBLIC_SITE_URL,
+    ),
+  );
   return redirect("/me?sent=1");
 }
 
