@@ -12,6 +12,7 @@ import { formatEth } from "../lib/i18n";
 import { DUTIES, dutyAssignedNotice, eventTitle, MAX_PER_DUTY, planEventRelease, planReschedule, type Duty } from "../lib/notify";
 import { drainOutbox, enqueue, loadPlanMembers } from "../lib/notify.server";
 import { notify, recipientForUser } from "../lib/notices.server";
+import { releaseEvent } from "../lib/events.server";
 import { can, canWorkTask, departmentOf, SERVICE_DEPARTMENTS, type ServiceDepartment } from "../lib/permissions";
 import { attendanceDiff, matchesSearch } from "../lib/dashboard";
 import { AddPanel, Card, PageHead, TabBar, type Tab } from "../components/Layout";
@@ -143,30 +144,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (intent === "release") {
     if (!a.manage) deny();
-    const duties = await db
-      .select({ duty: schema.eventDuties.duty, memberId: schema.members.id, name: schema.members.fullName })
-      .from(schema.eventDuties)
-      .innerJoin(schema.members, eq(schema.members.id, schema.eventDuties.memberId))
-      .where(eq(schema.eventDuties.eventId, event.id))
-      .orderBy(asc(schema.eventDuties.createdAt));
-    const songs = await db
-      .select({ title: schema.songs.title })
-      .from(schema.eventSongs)
-      .innerJoin(schema.songs, eq(schema.songs.id, schema.eventSongs.songId))
-      .where(eq(schema.eventSongs.eventId, event.id))
-      .orderBy(asc(schema.eventSongs.sort));
-    const groupChatId = env.TELEGRAM_GROUP_CHAT_ID || null;
-    const items = planEventRelease({
-      event,
-      duties,
-      songs: songs.map((s) => s.title),
-      members: await loadPlanMembers(db),
-      groupChatId,
-      stamp: new Date().toISOString().slice(0, 16),
-    });
-    await enqueue(db, items);
-    context.cloudflare.ctx.waitUntil(drainOutbox(env, db).catch((e) => console.error("release send failed", e)));
-    return { message: "released" as const, sent: items.length, noGroup: !groupChatId };
+    const r = await releaseEvent(env, context.cloudflare.ctx, db, event);
+    return { message: "released" as const, sent: r.sent, noGroup: r.noGroup };
   }
 
   if (intent === "cancel") {

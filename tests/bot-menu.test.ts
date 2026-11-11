@@ -23,4 +23,14 @@ describe("bot keyboard", () => {
     expect(menuAction("Abebe Kebede")).toBeNull();
     expect(menuAction(undefined)).toBeNull();
   });
+
+  it("adds department rows by role", () => {
+    const labels = (role: Parameters<typeof memberKeyboard>[2], isMember = true) => memberKeyboard("am", true, role, isMember).keyboard.flat().map((b) => menuAction(b.text));
+    expect(labels("finance")).toEqual(["unpaid", "next", "songs", "pay", "notify", "pages"]);
+    expect(labels("preparation")).toEqual(["eventDetails", "attendance", "next", "songs", "pay", "notify", "pages"]);
+    expect(labels("leader")).toEqual(["eventDetails", "attendance", "unpaid", "next", "songs", "pay", "notify", "pages"]);
+    expect(labels("songs")).toEqual(["next", "songs", "pay", "notify", "pages"]);
+    // Staff without a member record still get their department buttons
+    expect(labels("finance", false)).toEqual(["unpaid", "next", "notify", "pages"]);
+  });
 });

@@ -4,21 +4,29 @@
  */
 import { DICTS, t } from "./i18n";
 import type { Lang } from "./lang";
+import { can, type Role } from "./permissions";
 
-export type MenuAction = "next" | "songs" | "pay" | "pages" | "notify" | "register" | "open";
+export type MenuAction = "next" | "songs" | "pay" | "pages" | "notify" | "register" | "open" | "unpaid" | "attendance" | "eventDetails";
+
+/** Department rows: Finance sees unpaid members; event preparation sees attendance and the next event. */
+export const staffButtons = (role: Role) => ({ finance: can(role, "finance:view"), events: can(role, "event:manage") });
 
 /** Buttons for people who aren't members yet: both languages on one button. */
 export const GUEST_REGISTER = `${DICTS.om.botReg.registerBtn} · ${DICTS.am.botReg.registerBtn.replace("📝 ", "")}`;
 export const GUEST_OPEN = `${DICTS.om.botReg.openBtn} · ${DICTS.am.botReg.openBtn.replace("📖 ", "")}`;
 
-export function memberKeyboard(lang: Lang, notifyOn: boolean) {
+export function memberKeyboard(lang: Lang, notifyOn: boolean, role: Role = "member", isMember = true) {
   const m = t(lang).botMenu;
+  const staff = staffButtons(role);
+  const rows: { text: string }[][] = [];
+  // Department buttons first: they are what that person opens the bot for
+  if (staff.events) rows.push([{ text: m.eventDetails }, { text: m.attendance }]);
+  if (staff.finance) rows.push([{ text: m.unpaid }]);
+  if (isMember) rows.push([{ text: m.next }, { text: m.songs }], [{ text: m.pay }, { text: notifyOn ? m.notifyOn : m.notifyOff }]);
+  else rows.push([{ text: m.next }, { text: notifyOn ? m.notifyOn : m.notifyOff }]);
+  rows.push([{ text: m.pages }]);
   return {
-    keyboard: [
-      [{ text: m.next }, { text: m.songs }],
-      [{ text: m.pay }, { text: notifyOn ? m.notifyOn : m.notifyOff }],
-      [{ text: m.pages }],
-    ],
+    keyboard: rows,
     resize_keyboard: true,
     is_persistent: true,
   };
@@ -43,6 +51,9 @@ export function menuAction(text: string | undefined): MenuAction | null {
     if (s === m.pay) return "pay";
     if (s === m.pages) return "pages";
     if (s === m.notifyOn || s === m.notifyOff) return "notify";
+    if (s === m.unpaid) return "unpaid";
+    if (s === m.attendance) return "attendance";
+    if (s === m.eventDetails) return "eventDetails";
   }
   return null;
 }

@@ -10,7 +10,12 @@ import { createMember, memberForUser } from "../lib/members.server";
 import { newRegistrationNotices } from "../lib/notices";
 import { notify, recipientsWithRoles } from "../lib/notices.server";
 import { guestKeyboard, memberKeyboard, menuAction } from "../lib/bot-menu";
-import { botNotifyFor, nextReply, pagesReply, payReply, songsReply, type BotReply } from "../lib/bot-menu.server";
+import { attendanceReply, confirmMarkup, eventDetailsReply, nextReply, pagesReply, payReply, remindUnpaid, songsReply, unpaidReply, type BotReply } from "../lib/bot-menu.server";
+import { staffButtons } from "../lib/bot-menu";
+import { releaseEvent } from "../lib/events.server";
+import { enqueue, drainOutbox } from "../lib/notify.server";
+import { DEFAULT_LANG } from "../lib/lang";
+import type { Role } from "../lib/permissions";
 
 /**
  * Telegram calls this for messages to the bot and button taps (set up once with
@@ -67,11 +72,24 @@ export async function action({ request, context }: Route.ActionArgs) {
     return userId ? memberForUser(db, userId) : undefined;
   }
 
-  const keyboardFor = async (member: { lang: "om" | "am"; userId: string }) => memberKeyboard(member.lang, await botNotifyFor(db, member.userId));
+  /** Who is writing: their account (role, messages on/off) and member record, if any. */
+  async function who(telegramId: number) {
+    const userId = await userIdForTelegram(db, telegramId);
+    if (!userId) return null;
+    const u = await db.query.user.findFirst({ where: eq(schema.user.id, userId), columns: { role: true, botNotify: true } });
+    const member = await memberForUser(db, userId);
+    return { userId, role: (u?.role ?? "member") as Role, botNotify: u?.botNotify ?? true, member, lang: member?.lang ?? DEFAULT_LANG };
+  }
+  type Who = NonNullable<Awaited<ReturnType<typeof who>>>;
+  const keyboardOf = (w: Who, notifyOn = w.botNotify) => memberKeyboard(w.lang, notifyOn, w.role, Boolean(w.member));
+  const keyboardForTg = async (telegramId: number) => {
+    const w = await who(telegramId);
+    return w ? keyboardOf(w) : guestKeyboard();
+  };
 
   async function beginRegistration(chatId: number, from: TgUser) {
     const member = await existingMember(from.id);
-    if (member) return send(chatId, t(member.lang).botReg.already, await keyboardFor(member));
+    if (member) return send(chatId, t(member.lang).botReg.already, await keyboardForTg(from.id));
     await db
       .insert(schema.botRegistrations)
       .values({ chatId: String(chatId), step: START.step, data: START.data, updatedAt: Date.now() })
@@ -99,14 +117,14 @@ export async function action({ request, context }: Route.ActionArgs) {
       await db.delete(schema.botRegistrations).where(eq(schema.botRegistrations.chatId, String(chatId)));
       if (error === "studentIdTaken") return send(chatId, `${tr.errors.studentIdTaken}\n/register`);
       const created = await memberForUser(db, userId);
-      if (error === "alreadyMember") return send(chatId, tr.botReg.already, created ? await keyboardFor(created) : openButton(tr.botReg.openBtn));
+      if (error === "alreadyMember") return send(chatId, tr.botReg.already, created ? await keyboardForTg(from.id) : openButton(tr.botReg.openBtn));
       if (created) {
         notify(env, ctx, newRegistrationNotices(await recipientsWithRoles(db, ["members_coordinator"]), {
           id: created.id, name: result.submit.fullName, department: result.submit.department, graduate: result.submit.studyYear === null,
         }, site));
       }
       // The keyboard under the chat replaces the registration buttons from here on
-      return send(chatId, result.reply.text, created ? await keyboardFor(created) : openButton(tr.botReg.openBtn));
+      return send(chatId, result.reply.text, created ? await keyboardForTg(from.id) : openButton(tr.botReg.openBtn));
     }
 
     await db
@@ -135,31 +153,37 @@ export async function action({ request, context }: Route.ActionArgs) {
       return send(chatId, both((d) => d.botReg.cancelled), { remove_keyboard: true });
     }
     if (cmd?.command === "start") {
-      const member = await existingMember(msg.from.id);
-      if (member) return send(chatId, t(member.lang).botReg.welcomeMember, await keyboardFor(member));
+      const w = await who(msg.from.id);
+      if (w && (w.member || staffButtons(w.role).finance || staffButtons(w.role).events)) return send(chatId, t(w.lang).botReg.welcomeMember, keyboardOf(w));
       return send(chatId, both((d) => d.botReg.intro), guestKeyboard());
     }
 
     // Keyboard buttons (checked before an open registration so they always work)
     const tapped = cmd ? null : menuAction(msg.text);
     if (tapped) {
-      const member = await existingMember(msg.from.id);
+      const w = await who(msg.from.id);
       const reply = (r: BotReply) => send(chatId, r.text, r.reply_markup);
       if (tapped === "register") return beginRegistration(chatId, msg.from);
-      if (!member) {
+      if (!w) {
         if (tapped === "open") return send(chatId, both((d) => d.botMenu.pagesTitle), openButton(`${DICTS.om.botReg.openBtn} · ${DICTS.am.botReg.openBtn.replace("📖 ", "")}`));
         return send(chatId, both((d) => d.botReg.intro), guestKeyboard());
       }
-      const lang = member.lang;
+      const { lang, member } = w;
+      const staff = staffButtons(w.role);
+      const denied = () => send(chatId, t(lang).botMenu.notAllowed, keyboardOf(w));
+      if (tapped === "unpaid") return staff.finance ? reply(await unpaidReply(db, lang, site)) : denied();
+      if (tapped === "attendance") return staff.events ? reply(await attendanceReply(db, lang, site)) : denied();
+      if (tapped === "eventDetails") return staff.events ? reply(await eventDetailsReply(db, lang, site)) : denied();
+      if (tapped === "pages" || tapped === "open") return reply(pagesReply(lang, site, Boolean(member)));
+      if (tapped === "notify") {
+        const on = !w.botNotify;
+        await db.update(schema.user).set({ botNotify: on }).where(eq(schema.user.id, w.userId));
+        return send(chatId, on ? t(lang).botMenu.notifyNowOn : t(lang).botMenu.notifyNowOff, keyboardOf(w, on));
+      }
+      if (!member) return send(chatId, both((d) => d.botReg.intro), guestKeyboard());
       if (tapped === "next") return reply(await nextReply(db, member, lang));
       if (tapped === "songs") return reply(await songsReply(db, lang, site));
       if (tapped === "pay") return reply(await payReply(db, member, lang, site));
-      if (tapped === "pages" || tapped === "open") return reply(pagesReply(lang, site, true));
-      if (tapped === "notify") {
-        const on = !(await botNotifyFor(db, member.userId));
-        await db.update(schema.user).set({ botNotify: on }).where(eq(schema.user.id, member.userId));
-        return send(chatId, on ? t(lang).botMenu.notifyNowOn : t(lang).botMenu.notifyNowOff, memberKeyboard(lang, on));
-      }
     }
 
     const session = await db.query.botRegistrations.findFirst({ where: eq(schema.botRegistrations.chatId, String(chatId)) });
@@ -176,6 +200,42 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const cb = update.callback_query;
+  // Staff actions that message many people: first a Yes/No question, then the result in its place
+  if (cb?.message && cb.data && /^(f|e|x):/.test(cb.data) && !cb.from.is_bot) {
+    api("answerCallbackQuery", { callback_query_id: cb.id });
+    const chatId = cb.message.chat.id;
+    const messageId = cb.message.message_id;
+    const w = await who(cb.from.id);
+    if (!w) return ok();
+    const m = t(w.lang).botMenu;
+    const staff = staffButtons(w.role);
+    const edit = (text: string) => Response.json({ method: "editMessageText", chat_id: chatId, message_id: messageId, text });
+    const [kind, action, id] = cb.data.split(":");
+    if (kind === "x") return edit(m.dropped);
+    if (kind === "f" && staff.finance) {
+      if (action === "remind") {
+        const n = (await remindUnpaid(db, site)).length;
+        return send(chatId, m.remindConfirm(n), confirmMarkup(w.lang, "f:remindyes"));
+      }
+      if (action === "remindyes") {
+        const items = await remindUnpaid(db, site);
+        await enqueue(db, items);
+        ctx.waitUntil(drainOutbox(env, db).catch((e) => console.error("remind failed", e)));
+        return edit(m.remindSent(items.length));
+      }
+    }
+    if (kind === "e" && staff.events && id) {
+      const event = await db.query.events.findFirst({ where: eq(schema.events.id, id) });
+      if (!event) return edit(m.nextNone);
+      if (action === "notify") return send(chatId, m.notifyConfirm, confirmMarkup(w.lang, `e:notifyyes:${id}`));
+      if (action === "notifyyes") {
+        const r = await releaseEvent(env, ctx, db, event);
+        const ev = t(w.lang).events;
+        return edit(`${ev.notifySent(r.sent)}${r.noGroup ? `\n${ev.noGroup}` : ""}`);
+      }
+    }
+    return edit(m.notAllowed);
+  }
   if (cb?.message && cb.data?.startsWith("r:") && !cb.from.is_bot) {
     const chatId = cb.message.chat.id;
     api("answerCallbackQuery", { callback_query_id: cb.id });
