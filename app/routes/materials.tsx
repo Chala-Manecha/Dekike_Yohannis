@@ -1,4 +1,6 @@
-import { and, asc, desc, eq, isNull, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, max, or, type SQL } from "drizzle-orm";
+import { isoToEth, todayIso } from "../lib/dates";
+import { formatEth } from "../lib/i18n";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/materials";
 import { PageHead } from "../components/Layout";
@@ -48,7 +50,34 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     reviewer ? db.select().from(m).where(eq(m.status, "pending")).orderBy(asc(m.createdAt)).limit(100) : Promise.resolve([]),
     db.selectDistinct({ course: m.course }).from(m).where(eq(m.status, "approved")).orderBy(asc(m.course)).limit(300),
   ]);
-  return { allowed: true as const, filters, reviewer, items, mine, pending, courses: courses.map((c) => c.course) };
+  // Education sees who shared what: per person totals, and the name/date on every file.
+  const uploaders = reviewer
+    ? await db
+        .select({
+          userId: m.uploadedBy,
+          name: schema.user.name,
+          total: count(),
+          last: max(m.createdAt),
+        })
+        .from(m)
+        .leftJoin(schema.user, eq(schema.user.id, m.uploadedBy))
+        .groupBy(m.uploadedBy)
+        .orderBy(desc(count()))
+        .limit(200)
+    : [];
+  const names = Object.fromEntries(uploaders.map((u) => [u.userId ?? "", u.name ?? "—"]));
+  const by = <T extends { uploadedBy: string | null }>(rows: T[]) => rows.map((r) => ({ ...r, by: reviewer ? (names[r.uploadedBy ?? ""] ?? "—") : null }));
+  return {
+    allowed: true as const,
+    filters,
+    reviewer,
+    items: by(items),
+    mine: by(mine),
+    pending: by(pending),
+    courses: courses.map((c) => c.course),
+    uploaders: uploaders.map((u) => ({ ...u, last: u.last ? todayIso(new Date(u.last)) : null })),
+    totalFiles: uploaders.reduce((n, u) => n + u.total, 0),
+  };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -86,7 +115,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 type Item = Extract<Route.ComponentProps["loaderData"], { allowed: true }>["items"][number];
 
 export default function Materials({ loaderData }: Route.ComponentProps) {
-  const { tr } = useT();
+  const { lang, tr } = useT();
   const m = tr.materials;
   const busy = useNavigation().state !== "idle";
   const { filters } = loaderData;
@@ -121,6 +150,7 @@ export default function Materials({ loaderData }: Route.ComponentProps) {
           <a href={`/materials/${i.id}/file`} target="_blank" rel="noreferrer"><strong>{i.title}</strong></a>
         )}
         <span className="muted">{i.course} · {where(i)} · {formatBytes(i.fileSize)}</span>
+        {i.by && <span className="muted small">👤 {i.by} · {formatEth(lang, isoToEth(todayIso(i.createdAt)))}</span>}
       </div>
       {extra}
     </li>
@@ -153,6 +183,26 @@ export default function Materials({ loaderData }: Route.ComponentProps) {
       )}
 
       <MaterialUpload courses={courses} reviewer={reviewer} />
+
+      {reviewer && loaderData.uploaders.length > 0 && (
+        <details className="panel uploaders">
+          <summary><strong>{m.whoShared}</strong> <span className="muted">· {m.filesBy(loaderData.totalFiles, loaderData.uploaders.length)}</span></summary>
+          <div className="table-wrap">
+            <table className="table-oneline">
+              <thead><tr><th>{m.person}</th><th>{m.files}</th><th>{m.lastShared}</th></tr></thead>
+              <tbody>
+                {loaderData.uploaders.map((u) => (
+                  <tr key={u.userId ?? "none"}>
+                    <td>{u.name ?? "—"}</td>
+                    <td>{u.total}</td>
+                    <td>{u.last ? formatEth(lang, isoToEth(u.last)) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
 
       {mine.length > 0 && (
         <section aria-labelledby="mine-h">

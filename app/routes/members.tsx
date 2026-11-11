@@ -112,22 +112,25 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
   const base = status === "pending" ? loaderData.pending : loaderData.active;
   const dept = pickParam(params.get("dept"), ACADEMIC_DEPARTMENTS);
   const standing = pickParam(params.get("standing"), ["student", "graduate"] as const);
-  const want = pickParam(params.get("want"), SERVICE_DEPARTMENTS);
   const q = params.get("q") ?? "";
   const searched = base.filter((m) => matchesSearch(q, [m.fullName, m.christianName, m.studentId, m.phone, m.telegramUsername]));
   // Each row of buttons counts what the other filters leave, so the numbers always add up
-  const byDept = searched.filter((m) => (!standing || m.standing.kind === standing) && (!want || m.interests.includes(want)));
-  const byStanding = searched.filter((m) => (!dept || m.department === dept) && (!want || m.interests.includes(want)));
-  const byWant = searched.filter((m) => (!dept || m.department === dept) && (!standing || m.standing.kind === standing));
+  const byDept = searched.filter((m) => !standing || m.standing.kind === standing);
+  const byStanding = searched.filter((m) => !dept || m.department === dept);
   const rows = byDept.filter((m) => !dept || m.department === dept);
 
   return (
     <section className="page wide">
-      <PageHead back={{ to: "/dashboard", label: tr.nav.dashboard }} title={t.title} sub={tr.serviceDept.members} />
-      {loaderData.canContacts && <p><Link to="/contacts">{tr.contacts.manageTitle} →</Link></p>}
+      <PageHead
+        compact
+        back={{ to: "/dashboard", label: tr.nav.dashboard }}
+        title={t.title}
+        actions={loaderData.canContacts ? <Link to="/contacts">📇 {tr.contacts.manageTitle}</Link> : undefined}
+      />
       {actionData?.message && <p className={actionData.message === "roleDenied" ? "form-error" : "notice"} role="status">{t[actionData.message]}</p>}
 
-      <div className="card filter-card">
+      <div className="card filter-card filter-card--compact">
+      <div className="filter-top">
       <div className="chips" role="group" aria-label={t.status}>
         <Link to="?status=active" className="chip" aria-current={status === "active"}>{t.activeTitle} <b>{loaderData.active.length}</b></Link>
         {canReview && (
@@ -140,14 +143,13 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
       <Form method="get" className="list-tools" role="search">
         {[...params.entries()].filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         <input type="search" name="q" defaultValue={q} placeholder={t.search} aria-label={t.search} />
-        <button className="btn btn-quiet btn-sm">{tr.materials.filter}</button>
+        <button className="btn btn-quiet btn-sm" aria-label={tr.materials.filter}>🔍</button>
       </Form>
+      </div>
       <Chips label={t.department} param="dept" value={dept} allLabel={tr.materials.allDepartments}
         options={ACADEMIC_DEPARTMENTS.map((x) => [x, tr.dept[x]])} counts={countBy(byDept, ACADEMIC_DEPARTMENTS, (m) => m.department)} />
       <Chips label={t.standing} param="standing" value={standing} allLabel={t.all}
         options={[["student", d.students], ["graduate", d.graduates]]} counts={countBy(byStanding, ["student", "graduate"] as const, (m) => m.standing.kind)} />
-      <Chips label={tr.register.interests} param="want" value={want} allLabel={t.all}
-        options={SERVICE_DEPARTMENTS.map((x) => [x, tr.serviceDept[x]])} counts={{ ...countBy(byWant.flatMap((m) => m.interests.map((i) => ({ i }))), SERVICE_DEPARTMENTS, (r) => r.i), all: byWant.length }} />
       </div>
 
       <h2 className="list-title">{status === "pending" ? t.pendingTitle : t.activeTitle} <span className="muted">({rows.length})</span></h2>
@@ -164,9 +166,6 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
                   <tr key={m.id}>
                     <td>
                       <strong>{m.fullName}</strong>{m.christianName && <span className="muted"> ({m.christianName})</span>}
-                      {m.interests.length > 0 && (
-                        <span className="interests">{m.interests.map((x) => <span key={x} className="badge">{tr.serviceDept[x as ServiceDepartment] ?? x}</span>)}</span>
-                      )}
                     </td>
                     <td>{m.studentId ?? "—"}</td>
                     <td>{tr.dept[m.department]}</td>

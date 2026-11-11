@@ -12,18 +12,19 @@ export async function recipientsWithRoles(db: Db, roles: Role[]): Promise<Recipi
     .select({ userId: schema.user.id, telegramId: schema.user.telegramId, lang: schema.members.lang })
     .from(schema.user)
     .leftJoin(schema.members, eq(schema.members.userId, schema.user.id))
-    .where(and(inArray(schema.user.role, roles), isNotNull(schema.user.telegramId)));
+    .where(and(inArray(schema.user.role, roles), isNotNull(schema.user.telegramId), eq(schema.user.botNotify, true)));
   return rows.map((r) => ({ userId: r.userId, telegramId: r.telegramId, lang: (r.lang ?? "om") as Lang }));
 }
 
 export async function recipientForUser(db: Db, userId: string): Promise<Recipient> {
   const row = await db
-    .select({ userId: schema.user.id, telegramId: schema.user.telegramId, lang: schema.members.lang })
+    .select({ userId: schema.user.id, telegramId: schema.user.telegramId, lang: schema.members.lang, botNotify: schema.user.botNotify })
     .from(schema.user)
     .leftJoin(schema.members, eq(schema.members.userId, schema.user.id))
     .where(eq(schema.user.id, userId))
     .get();
-  return { userId, telegramId: row?.telegramId ?? null, lang: (row?.lang ?? "om") as Lang };
+  // Members who turned bot messages off get nothing private (group posts still happen).
+  return { userId, telegramId: row?.botNotify ? (row.telegramId ?? null) : null, lang: (row?.lang ?? "om") as Lang };
 }
 
 /**

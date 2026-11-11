@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, lt, max } from "drizzle-orm";
+import { and, asc, count, eq, gt, lt, max } from "drizzle-orm";
 import { useState } from "react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { z } from "zod";
@@ -9,8 +9,9 @@ import { getDb, schema } from "../db";
 import { isoToEth } from "../lib/dates";
 import { eventFormSchema, ethFieldsToIso } from "../lib/event-form";
 import { formatEth } from "../lib/i18n";
-import { eventTitle, planReschedule } from "../lib/notify";
-import { enqueue, loadPlanMembers } from "../lib/notify.server";
+import { DUTIES, dutyAssignedNotice, eventTitle, MAX_PER_DUTY, planEventRelease, planReschedule, type Duty } from "../lib/notify";
+import { drainOutbox, enqueue, loadPlanMembers } from "../lib/notify.server";
+import { notify, recipientForUser } from "../lib/notices.server";
 import { can, canWorkTask, departmentOf, SERVICE_DEPARTMENTS, type ServiceDepartment } from "../lib/permissions";
 import { attendanceDiff, matchesSearch } from "../lib/dashboard";
 import { AddPanel, Card, PageHead, TabBar, type Tab } from "../components/Layout";
@@ -46,6 +47,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     .innerJoin(schema.songs, eq(schema.songs.id, schema.eventSongs.songId))
     .where(eq(schema.eventSongs.eventId, event.id))
     .orderBy(asc(schema.eventSongs.sort));
+  const duties = await db
+    .select({ id: schema.eventDuties.id, duty: schema.eventDuties.duty, memberId: schema.members.id, name: schema.members.fullName })
+    .from(schema.eventDuties)
+    .innerJoin(schema.members, eq(schema.members.id, schema.eventDuties.memberId))
+    .where(eq(schema.eventDuties.eventId, event.id))
+    .orderBy(asc(schema.eventDuties.createdAt));
+  const pickable = a.manage
+    ? await db.select({ id: schema.members.id, fullName: schema.members.fullName }).from(schema.members).where(eq(schema.members.status, "active")).orderBy(asc(schema.members.fullName))
+    : [];
   const canAttendance = can(a.user.role, "attendance:mark");
   const attendance = canAttendance
     ? await Promise.all([
@@ -68,6 +78,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     perms: { manage: a.manage, program: a.program, assign: a.assign, photos: can(a.user.role, "photo:manage"), songs: songsManage },
     eventSongs,
     attendance,
+    duties,
+    pickable,
     allSongs: allSongs.filter((x) => !eventSongs.some((e) => e.songId === x.id)),
     created: new URL(request.url).searchParams.has("created"),
   };
@@ -99,8 +111,62 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (date !== event.date && event.status === "scheduled") {
       const members = await loadPlanMembers(db);
       await enqueue(db, planReschedule({ ...event, title, time, place, date }, members, env.TELEGRAM_GROUP_CHAT_ID || null));
+      context.cloudflare.ctx.waitUntil(drainOutbox(env, db).catch((err) => console.error("reschedule send failed", err)));
     }
     return { message: "updated" as const };
+  }
+
+  if (intent === "addDuty" || intent === "removeDuty") {
+    if (!a.manage) deny();
+    if (intent === "removeDuty") {
+      await db.delete(schema.eventDuties).where(and(eq(schema.eventDuties.id, String(form.get("id"))), eq(schema.eventDuties.eventId, event.id)));
+      return { ok: true };
+    }
+    const duty = String(form.get("duty")) as Duty;
+    const memberId = String(form.get("memberId") ?? "");
+    if (!DUTIES.includes(duty)) return { error: "fixFields" as const };
+    const member = await db.query.members.findFirst({ where: and(eq(schema.members.id, memberId), eq(schema.members.status, "active")) });
+    if (!member) return { error: "fixFields" as const };
+    const [{ n }] = await db.select({ n: count() }).from(schema.eventDuties).where(and(eq(schema.eventDuties.eventId, event.id), eq(schema.eventDuties.duty, duty)));
+    if (n >= MAX_PER_DUTY) return { error: "dutyFull" as const };
+    const inserted = await db
+      .insert(schema.eventDuties)
+      .values({ eventId: event.id, duty, memberId, assignedBy: a.user.id })
+      .onConflictDoNothing()
+      .returning({ id: schema.eventDuties.id });
+    if (inserted.length && member.userId) {
+      const r = await recipientForUser(db, member.userId);
+      notify(env, context.cloudflare.ctx, dutyAssignedNotice(r, event, { memberId, name: member.fullName, duty }, env.PUBLIC_SITE_URL));
+    }
+    return { ok: true };
+  }
+
+  if (intent === "release") {
+    if (!a.manage) deny();
+    const duties = await db
+      .select({ duty: schema.eventDuties.duty, memberId: schema.members.id, name: schema.members.fullName })
+      .from(schema.eventDuties)
+      .innerJoin(schema.members, eq(schema.members.id, schema.eventDuties.memberId))
+      .where(eq(schema.eventDuties.eventId, event.id))
+      .orderBy(asc(schema.eventDuties.createdAt));
+    const songs = await db
+      .select({ title: schema.songs.title })
+      .from(schema.eventSongs)
+      .innerJoin(schema.songs, eq(schema.songs.id, schema.eventSongs.songId))
+      .where(eq(schema.eventSongs.eventId, event.id))
+      .orderBy(asc(schema.eventSongs.sort));
+    const groupChatId = env.TELEGRAM_GROUP_CHAT_ID || null;
+    const items = planEventRelease({
+      event,
+      duties,
+      songs: songs.map((s) => s.title),
+      members: await loadPlanMembers(db),
+      groupChatId,
+      stamp: new Date().toISOString().slice(0, 16),
+    });
+    await enqueue(db, items);
+    context.cloudflare.ctx.waitUntil(drainOutbox(env, db).catch((e) => console.error("release send failed", e)));
+    return { message: "released" as const, sent: items.length, noGroup: !groupChatId };
   }
 
   if (intent === "cancel") {
@@ -195,19 +261,20 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
   const e = tr.events;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const { event, eth, program, tasks, perms, eventSongs, allSongs, attendance } = loaderData;
+  const { event, eth, program, tasks, perms, eventSongs, allSongs, attendance, duties, pickable } = loaderData;
   const msg = actionData && "message" in actionData ? actionData.message : null;
   const err = actionData && "error" in actionData ? actionData.error : null;
   const [params] = useSearchParams();
 
   const tabs: Tab[] = [
+    { key: "duties", to: "?tab=duties", label: e.duties, icon: "👥", count: duties.length },
     { key: "program", to: "?tab=program", label: e.programTitle, icon: "📋", count: program.length },
     { key: "tasks", to: "?tab=tasks", label: e.tasksTitle, icon: "✅", count: tasks.filter((t) => t.status === "open").length, alert: true },
     { key: "songs", to: "?tab=songs", label: tr.songs.forEvent, icon: "🎵", count: eventSongs.length },
     ...(attendance ? [{ key: "attendance", to: "?tab=attendance", label: e.attendance, icon: "🙋", count: attendance.present.length }] : []),
     ...(perms.manage && event.status === "scheduled" ? [{ key: "edit", to: "?tab=edit", label: e.edit, icon: "✏️" }] : []),
   ];
-  const tab = tabs.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "program";
+  const tab = tabs.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "duties";
 
   return (
     <section className="page wide">
@@ -226,9 +293,67 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
       {loaderData.created && <p className="notice" role="status">{e.created}</p>}
       {msg === "updated" && <p className="notice" role="status">{e.updated}</p>}
       {msg === "attendanceSaved" && <p className="notice" role="status">{tr.saved}</p>}
-      {err && <p className="form-error" role="alert">{err === "badDate" ? e.badDate : tr.errors.fixFields}</p>}
+      {msg === "released" && actionData && "sent" in actionData && (
+        <p className="notice" role="status">{e.notifySent(actionData.sent ?? 0)}{actionData.noGroup ? ` ${e.noGroup}` : ""}</p>
+      )}
+      {err && <p className="form-error" role="alert">{err === "badDate" ? e.badDate : err === "dutyFull" ? e.dutyFull : tr.errors.fixFields}</p>}
 
       <TabBar tabs={tabs} active={tab} />
+
+      {tab === "duties" && (
+        <Card>
+          <ul className="duties">
+            {DUTIES.map((d) => {
+              const list = duties.filter((x) => x.duty === d);
+              const taken = new Set(list.map((x) => x.memberId));
+              return (
+                <li key={d}>
+                  <div className="duty-head"><strong>{e.dutyNames[d]}</strong><span className="muted small">{list.length}/{MAX_PER_DUTY}</span></div>
+                  <div className="duty-people">
+                    {list.length === 0 && <span className="muted small">{e.dutyNone}</span>}
+                    {list.map((x) => (
+                      <span key={x.id} className="person-chip">
+                        {x.name}
+                        {perms.manage && event.status === "scheduled" && (
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="removeDuty" />
+                            <input type="hidden" name="id" value={x.id} />
+                            <button className="link-btn" disabled={busy} aria-label={tr.remove}>✕</button>
+                          </Form>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                  {perms.manage && event.status === "scheduled" && list.length < MAX_PER_DUTY && (
+                    <Form method="post" className="inline-form duty-add">
+                      <input type="hidden" name="intent" value="addDuty" />
+                      <input type="hidden" name="duty" value={d} />
+                      <select name="memberId" aria-label={e.dutyPick} required defaultValue="">
+                        <option value="" disabled>{e.dutyPick}</option>
+                        {pickable.filter((m) => !taken.has(m.id)).map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                      </select>
+                      <button className="btn btn-primary btn-sm" disabled={busy}>{e.dutyAdd}</button>
+                    </Form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {perms.manage && <p className="muted small">{e.dutyHint}</p>}
+          {perms.manage && event.status === "scheduled" && (
+            <div className="release">
+              <div>
+                <strong>{e.notifyTitle}</strong>
+                <p className="muted small">{e.notifyHint}</p>
+              </div>
+              <Form method="post" onSubmit={(ev) => { if (!confirm(e.notifyTitle + "?")) ev.preventDefault(); }}>
+                <input type="hidden" name="intent" value="release" />
+                <button className="btn btn-green" disabled={busy}>{e.notifySend}</button>
+              </Form>
+            </div>
+          )}
+        </Card>
+      )}
 
       {tab === "program" && (
         <Card>
@@ -342,6 +467,7 @@ export default function EventDetail({ loaderData, actionData }: Route.ComponentP
             <input type="hidden" name="intent" value="update" />
             <Field label={e.titleLabel} hint={event.type === "zikr" ? e.titleHint : undefined} name="title" defaultValue={event.title ?? ""} />
             <EthDateFields value={eth} />
+            <p className="muted small">{e.rescheduleHint}</p>
             <Field label={e.time} hint={e.timeHint} name="time" defaultValue={event.time ?? ""} />
             <Field label={e.place} name="place" defaultValue={event.place ?? ""} />
             <label className="field"><span>{e.description}</span><textarea name="description" rows={3} defaultValue={event.description ?? ""} /></label>

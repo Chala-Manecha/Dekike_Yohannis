@@ -1,14 +1,22 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useRouteLoaderData } from "react-router";
 
 /** Blue title bar at the top of a page, with an optional ← Back button and actions on the right. */
-export function PageHead({ title, sub, back, actions }: { title: ReactNode; sub?: ReactNode; back?: { to: string; label: string }; actions?: ReactNode }) {
+export function PageHead({ title, sub, back, actions, hideWho, compact }: { title: ReactNode; sub?: ReactNode; back?: { to: string; label: string }; actions?: ReactNode; hideWho?: boolean; compact?: boolean }) {
+  // Whoever is signed in sees their own name on every dashboard.
+  const root = useRouteLoaderData("root") as { user?: { name?: string } | null } | undefined;
+  const who = hideWho ? null : root?.user?.name;
   return (
-    <header className="page-head">
-      {(back || actions) && (
+    <header className={`page-head${compact ? " page-head--compact" : ""}`}>
+      {(back || actions || who) && (
         <div className="page-head-top">
           {back ? <Link to={back.to} className="back-btn">← {back.label}</Link> : <span />}
-          {actions && <div className="page-head-actions">{actions}</div>}
+          {(actions || who) && (
+            <div className="page-head-actions">
+              {who && <Link to="/me" className="who">👤 {who}</Link>}
+              {actions}
+            </div>
+          )}
         </div>
       )}
       <h1>{title}</h1>

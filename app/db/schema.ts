@@ -23,6 +23,8 @@ export const user = sqliteTable("user", {
   role: text("role").notNull().default("member"),
   telegramId: text("telegram_id").unique(),
   telegramUsername: text("telegram_username"),
+  // Private messages from the bot (reminders, notices). Members can turn them off on My page.
+  botNotify: integer("bot_notify", { mode: "boolean" }).notNull().default(true),
   ...timestamps,
 });
 
@@ -441,6 +443,25 @@ export const contacts = sqliteTable("contacts", {
   sort: integer("sort").notNull().default(0),
   ...timestamps,
 });
+
+/** Duties for an event: who teaches, buys food/drinks, prepares the area, calls members (1–3 people each). */
+export const EVENT_DUTIES = ["teach", "food", "area", "call"] as const;
+export const eventDuties = sqliteTable(
+  "event_duties",
+  {
+    id: id(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    duty: text("duty", { enum: EVENT_DUTIES }).notNull(),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    assignedBy: text("assigned_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("event_duties_unique").on(t.eventId, t.duty, t.memberId), index("event_duties_event_idx").on(t.eventId)],
+);
 
 /** Who came to an event, ticked by the members department. One row per member per event. */
 export const attendance = sqliteTable(

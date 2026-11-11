@@ -92,6 +92,13 @@
       "when": 1794266556036,
       "tag": "0012_attendance",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794381919800,
+      "tag": "0013_notify_duties",
+      "breakpoints": true
     }
   ]
 }

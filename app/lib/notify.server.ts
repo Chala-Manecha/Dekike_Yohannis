@@ -28,6 +28,7 @@ export async function loadPlanMembers(db: Db, now = new Date()): Promise<PlanMem
       studyYear: schema.members.studyYear,
       registeredYear: schema.members.registeredYear,
       telegramId: schema.user.telegramId,
+      botNotify: schema.user.botNotify,
     })
     .from(schema.members)
     .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
@@ -48,7 +49,7 @@ export async function loadPlanMembers(db: Db, now = new Date()): Promise<PlanMem
     id: r.id,
     name: r.name,
     lang: r.lang,
-    telegramId: r.telegramId,
+    telegramId: r.botNotify ? r.telegramId : null,
     claimed: claimed.get(r.id) ?? new Set(),
     monthlyDue: duesFor(classInfo(r, today), dues),
   }));

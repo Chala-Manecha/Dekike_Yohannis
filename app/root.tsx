@@ -68,6 +68,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   useEffect(() => setMenuReady(true), []);
   useEffect(() => setMenuOpen(false), [location.pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
   return (
     <html lang={lang}>
       <head>
@@ -90,13 +96,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span aria-hidden="true">{menuOpen ? "✕" : "☰"}</span> {tr.nav.menu}
             </button>
           )}
+          {menuOpen && <button type="button" className="menu-backdrop" aria-label={tr.nav.close} onClick={() => setMenuOpen(false)} />}
           <nav aria-label="Main" id="main-nav" className={menuReady ? (menuOpen ? "is-open" : "is-closed") : undefined}>
+            {menuOpen && (
+              <div className="drawer-head">
+                <span>{data?.user?.name ?? tr.groupName}</span>
+                <button type="button" className="link-btn" aria-label={tr.nav.close} onClick={() => setMenuOpen(false)}>✕</button>
+              </div>
+            )}
+            {data?.user && <NavLink to="/me">{tr.nav.myPage}</NavLink>}
             {data?.nav.dashboard && <NavLink to="/dashboard">{tr.nav.dashboard}</NavLink>}
             <NavLink to="/" end>{tr.nav.home}</NavLink>
             <NavLink to="/gallery">{tr.nav.gallery}</NavLink>
             {data?.user && <NavLink to="/materials">{tr.nav.materials}</NavLink>}
             {data?.user && <NavLink to="/songs">{tr.nav.songs}</NavLink>}
-            {data?.user ? <NavLink to="/me">{tr.nav.myPage}</NavLink> : <NavLink to="/register">{tr.nav.register}</NavLink>}
+            {!data?.user && <NavLink to="/register">{tr.nav.register}</NavLink>}
             {data?.nav.events && <NavLink to="/events">{tr.nav.events}</NavLink>}
             {data?.nav.tasks && <NavLink to="/tasks">{tr.nav.tasks}</NavLink>}
             {data?.nav.finance && <NavLink to="/finance">{tr.nav.finance}</NavLink>}

@@ -6,7 +6,7 @@ import { getUser } from "../lib/session.server";
 import { useT } from "../lib/use-t";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  if (await getUser(request, context.cloudflare.env)) throw redirect("/dashboard");
+  if (await getUser(request, context.cloudflare.env)) throw redirect("/me");
   return null;
 }
 
@@ -40,7 +40,7 @@ export default function Link() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ initData, studentId: f.get("studentId"), password: f.get("password") }),
     }).catch(() => null);
-    if (res?.ok) return window.location.assign("/dashboard");
+    if (res?.ok) return window.location.assign("/me");
     const body = (await res?.json().catch(() => null)) as { message?: string } | null;
     const msg =
       res?.status === 429 ? tr.login.locked

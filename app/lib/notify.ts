@@ -31,7 +31,7 @@ export function eventTitle(lang: Lang, e: Pick<PlanEvent, "type" | "title">) {
   return e.title?.trim() || t(lang).events.types[e.type];
 }
 
-function when(lang: Lang, e: PlanEvent) {
+export function when(lang: Lang, e: PlanEvent) {
   const parts = [formatEth(lang, isoToEth(e.date))];
   if (e.time) parts.push(e.time);
   if (e.place) parts.push(e.place);
@@ -39,7 +39,7 @@ function when(lang: Lang, e: PlanEvent) {
 }
 
 /** Group posts are bilingual: Afaan Oromoo first, then Amharic. */
-function bilingual(build: (lang: Lang) => string) {
+export function bilingual(build: (lang: Lang) => string) {
   return `${build("om")}\n\n${build("am")}`;
 }
 
@@ -116,6 +116,66 @@ export function planReschedule(e: PlanEvent, members: Pick<PlanMember, "id" | "t
       chatId: m.telegramId,
       text: t(m.lang).bot.rescheduled(eventTitle(m.lang, e), when(m.lang, e)),
     });
+  }
+  return out;
+}
+
+export type Duty = "teach" | "food" | "area" | "call";
+export const DUTIES: Duty[] = ["teach", "food", "area", "call"];
+export const MAX_PER_DUTY = 3;
+
+/** Private note to someone just given a duty. */
+export function dutyAssignedNotice(
+  r: { telegramId: string | null; lang: Lang },
+  e: PlanEvent,
+  a: { memberId: string; name: string; duty: Duty },
+  site: string,
+): OutboxItem[] {
+  if (!r.telegramId) return [];
+  const tr = t(r.lang);
+  return [{
+    dedupeKey: `duty:${e.id}:${a.duty}:${a.memberId}:${e.date}`,
+    chatId: r.telegramId,
+    text: tr.bot.dutyAssigned(a.name, tr.events.dutyNames[a.duty], eventTitle(r.lang, e), when(r.lang, e), `${site}/me`),
+  }];
+}
+
+/**
+ * "Notify members" on an event: one bilingual group post (date, duties with names, songs) and a
+ * private note to each active member (with their own duty, if they have one). `stamp` makes each
+ * press a new message while a double-click in the same minute sends only once.
+ */
+export function planEventRelease(input: {
+  event: PlanEvent;
+  duties: { duty: Duty; memberId: string; name: string }[];
+  songs: string[];
+  members: Pick<PlanMember, "id" | "telegramId" | "lang">[];
+  groupChatId: string | null;
+  stamp: string;
+}): OutboxItem[] {
+  const { event: e, duties, songs, members, groupChatId, stamp } = input;
+  const body = (l: Lang, mine?: Duty[]) => {
+    const tr = t(l);
+    const lines = [`📅 ${eventTitle(l, e)}`, when(l, e)];
+    if (mine?.length) lines.push("", tr.bot.yourDuty(mine.map((d) => tr.events.dutyNames[d]).join(", ")));
+    const assigned = DUTIES.map((d) => [d, duties.filter((x) => x.duty === d).map((x) => x.name)] as const).filter(([, n]) => n.length);
+    if (assigned.length) {
+      lines.push("", tr.bot.dutiesHeader);
+      for (const [d, names] of assigned) lines.push(`• ${tr.events.dutyNames[d]}: ${names.join(", ")}`);
+    }
+    if (songs.length) {
+      lines.push("", tr.bot.songsHeader);
+      songs.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
+    }
+    lines.push("", tr.bot.invite);
+    return lines.join("\n");
+  };
+  const out: OutboxItem[] = [];
+  if (groupChatId) out.push({ dedupeKey: `release:${e.id}:${stamp}:group`, chatId: groupChatId, text: bilingual((l) => body(l)) });
+  for (const m of members) {
+    if (!m.telegramId) continue;
+    const mine = duties.filter((d) => d.memberId === m.id).map((d) => d.duty);
+    out.push({ dedupeKey: `release:${e.id}:${stamp}:${m.id}`, chatId: m.telegramId, text: body(m.lang, mine) });
   }
   return out;
 }

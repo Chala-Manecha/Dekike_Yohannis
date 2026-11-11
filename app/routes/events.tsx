@@ -5,11 +5,11 @@ import type { Route } from "./+types/events";
 import { EthDateFields } from "../components/EthDateFields";
 import { Field } from "../components/Field";
 import { getDb, schema } from "../db";
-import { addDaysIso, isoToEth, todayIso } from "../lib/dates";
+import { isoToEth, todayIso } from "../lib/dates";
 import { eventFormSchema, ethFieldsToIso } from "../lib/event-form";
 import { toEth } from "../lib/ethiopian";
 import { formatEth } from "../lib/i18n";
-import { eventTitle } from "../lib/notify";
+import { DUTIES, eventTitle } from "../lib/notify";
 import { ensureZikrEvents } from "../lib/notify.server";
 import { requirePermission } from "../lib/session.server";
 import { useT } from "../lib/use-t";
@@ -21,13 +21,23 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   await ensureZikrEvents(db);
   const today = todayIso();
   const cols = { id: schema.events.id, type: schema.events.type, title: schema.events.title, date: schema.events.date, status: schema.events.status, time: schema.events.time, place: schema.events.place };
-  const upcoming = await db.select(cols).from(schema.events).where(gte(schema.events.date, today)).orderBy(asc(schema.events.date)).limit(30);
-  const past = await db
+  const upcoming = await db
     .select(cols)
     .from(schema.events)
-    .where(and(lt(schema.events.date, today), gte(schema.events.date, addDaysIso(today, -90))))
-    .orderBy(desc(schema.events.date));
-  return { upcoming, past, todayEth: toEth(new Date()) };
+    .where(and(gte(schema.events.date, today), eq(schema.events.status, "scheduled")))
+    .orderBy(asc(schema.events.date))
+    .limit(30);
+  // Every past event stays on record (attendance, duties, songs).
+  const past = await db.select(cols).from(schema.events).where(lt(schema.events.date, today)).orderBy(desc(schema.events.date)).limit(500);
+  const next = upcoming[0] ?? null;
+  const duties = next
+    ? await db
+        .select({ duty: schema.eventDuties.duty, name: schema.members.fullName })
+        .from(schema.eventDuties)
+        .innerJoin(schema.members, eq(schema.members.id, schema.eventDuties.memberId))
+        .where(eq(schema.eventDuties.eventId, next.id))
+    : [];
+  return { next, later: Math.max(0, upcoming.length - 1), duties, past, todayEth: toEth(new Date()) };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -50,8 +60,8 @@ export default function Events({ loaderData, actionData }: Route.ComponentProps)
   const e = tr.events;
   const nav = useNavigation();
   const [params] = useSearchParams();
-  const show = params.get("show") === "past" ? "past" : "upcoming";
-  const items = show === "past" ? loaderData.past : loaderData.upcoming;
+  const show = params.get("show") === "past" ? "past" : "next";
+  const { next, duties } = loaderData;
 
   return (
     <section className="page wide">
@@ -82,14 +92,32 @@ export default function Events({ loaderData, actionData }: Route.ComponentProps)
       <TabBar
         active={show}
         tabs={[
-          { key: "upcoming", to: "?show=upcoming", label: e.upcoming, icon: "📅", count: loaderData.upcoming.length },
+          { key: "next", to: "?show=next", label: e.next, icon: "📅" },
           { key: "past", to: "?show=past", label: e.past, icon: "🗂️", count: loaderData.past.length },
         ]}
       />
 
-      {items.length === 0 ? <Card><p className="muted">{e.none}</p></Card> : (
+      {show === "next" && (next ? (
+        <Link to={`/events/${next.id}`} className="next-event">
+          <span className="event-date event-date--big"><b>{isoToEth(next.date).day}</b><small>{tr.months[isoToEth(next.date).month - 1]}</small></span>
+          <span className="event-main">
+            <strong>{eventTitle(lang, next)}</strong>
+            <span className="muted small">{formatEth(lang, isoToEth(next.date))}{next.time ? ` · ${next.time}` : ""}{next.place ? ` · ${next.place}` : ""}</span>
+            <span className="next-duties">
+              {DUTIES.map((d) => {
+                const names = duties.filter((x) => x.duty === d).map((x) => x.name);
+                return <span key={d}><b>{e.dutyNames[d]}:</b> {names.length ? names.join(", ") : <i className="muted">{e.dutyNone}</i>}</span>;
+              })}
+            </span>
+            <span className="btn btn-primary btn-sm">{e.open} ›</span>
+          </span>
+        </Link>
+      ) : <Card><p className="muted">{e.none}</p></Card>)}
+      {show === "next" && loaderData.later > 0 && <p className="muted small">{e.later(loaderData.later)}</p>}
+
+      {show === "past" && (loaderData.past.length === 0 ? <Card><p className="muted">{e.none}</p></Card> : (
         <ul className="event-rows">
-          {items.map((ev) => {
+          {loaderData.past.map((ev) => {
             const d = isoToEth(ev.date);
             return (
               <li key={ev.id} className={ev.status === "cancelled" ? "is-cancelled" : ""}>
@@ -105,7 +133,7 @@ export default function Events({ loaderData, actionData }: Route.ComponentProps)
             );
           })}
         </ul>
-      )}
+      ))}
     </section>
   );
 }

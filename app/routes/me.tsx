@@ -6,7 +6,10 @@ import { getDb, schema } from "../db";
 import { checkMonths, checkReceipt, contributionSchema, expectedAmount, payableMonths } from "../lib/contributions";
 import { classInfo, duesFor } from "../lib/classyear";
 import { getDues } from "../lib/settings.server";
-import { departmentOf } from "../lib/permissions";
+import { departmentOf, hasDashboard } from "../lib/permissions";
+import { MaterialUpload } from "../components/MaterialUpload";
+import { formatBytes } from "../lib/materials";
+import { DUTIES } from "../lib/notify";
 import { currentDueMonth, monthKey, toEth, type EthMonth } from "../lib/ethiopian";
 import { formatEth, standingLabel } from "../lib/i18n";
 import { requireUser } from "../lib/session.server";
@@ -94,6 +97,22 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     db.select({ eventId: schema.attendance.eventId }).from(schema.attendance).where(eq(schema.attendance.memberId, member.id)),
   ]);
   const came = new Set(attended.map((a) => a.eventId));
+  const upcomingIds = upcoming.map((e) => e.id);
+  const [myDuties, myMaterials, courses] = await Promise.all([
+    upcomingIds.length
+      ? db
+          .select({ eventId: schema.eventDuties.eventId, duty: schema.eventDuties.duty })
+          .from(schema.eventDuties)
+          .where(and(eq(schema.eventDuties.memberId, member.id), inArray(schema.eventDuties.eventId, upcomingIds)))
+      : Promise.resolve([]),
+    db
+      .select({ id: schema.materials.id, title: schema.materials.title, course: schema.materials.course, status: schema.materials.status, fileSize: schema.materials.fileSize, createdAt: schema.materials.createdAt })
+      .from(schema.materials)
+      .where(eq(schema.materials.uploadedBy, user.id))
+      .orderBy(desc(schema.materials.createdAt))
+      .limit(50),
+    db.selectDistinct({ course: schema.materials.course }).from(schema.materials).where(eq(schema.materials.status, "approved")).orderBy(asc(schema.materials.course)).limit(300),
+  ]);
   const myDept = departmentOf(user.role);
   const openTasks = myDept
     ? (await db.select({ id: schema.eventTasks.id }).from(schema.eventTasks).where(and(eq(schema.eventTasks.department, myDept), eq(schema.eventTasks.status, "open")))).length
@@ -108,7 +127,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     role: user.role,
     myDept,
     openTasks,
-    upcoming: upcoming.map((e) => ({ ...e, eth: isoToEth(e.date) })),
+    upcoming: upcoming.map((e) => ({ ...e, eth: isoToEth(e.date), duties: DUTIES.filter((d) => myDuties.some((x) => x.eventId === e.id && x.duty === d)) })),
+    myMaterials,
+    courses: courses.map((c) => c.course),
+    deptPage: hasDashboard(user.role),
     attendance: past.map((e) => ({ ...e, eth: isoToEth(e.date), present: came.has(e.id) })),
     standing,
     rate,
@@ -224,9 +246,15 @@ export default function Me({ loaderData, actionData }: Route.ComponentProps) {
   };
   const head = (
     <PageHead
+      hideWho
       title={profile.fullName}
       sub={<>{standingLabel(lang, data.standing)} · {tr.dept[profile.department]}{profile.studentId ? ` · ${profile.studentId}` : ""}</>}
-      actions={<Link to="/me/account">⚙️ {tr.accountSettings.title}</Link>}
+      actions={
+        <>
+          {data.view === "full" && data.deptPage && <Link to="/dashboard" className="dept-link">🗂️ {tr.roles[data.role]}</Link>}
+          <Link to="/me/account">⚙️ {tr.accountSettings.title}</Link>
+        </>
+      }
     />
   );
 
@@ -251,6 +279,7 @@ export default function Me({ loaderData, actionData }: Route.ComponentProps) {
     { key: "pay", to: "?tab=pay", label: md.payments, icon: "💳", count: unpaid.length, alert: true },
     { key: "attendance", to: "?tab=attendance", label: md.attendance, icon: "🙋" },
     { key: "events", to: "?tab=events", label: md.events, icon: "📅", count: data.upcoming.length },
+    { key: "materials", to: "?tab=materials", label: tr.nav.materials, icon: "📚", count: data.myMaterials.length },
     { key: "profile", to: "?tab=profile", label: md.profile, icon: "👤" },
   ];
   const tab = tabs.some((t) => t.key === params.get("tab")) ? params.get("tab")! : actionData?.error || data.flags.sent ? "pay" : "overview";
@@ -265,6 +294,11 @@ export default function Me({ loaderData, actionData }: Route.ComponentProps) {
 
       {tab === "overview" && (
         <>
+          {data.upcoming.filter((ev) => ev.duties.length).map((ev) => (
+            <p key={ev.id} className="duty-banner">
+              👉 <strong>{ev.duties.map((d) => tr.events.dutyNames[d]).join(", ")}</strong> — {eventTitle(lang, ev)} · {formatEth(lang, ev.eth)}
+            </p>
+          ))}
           <div className="mini-stats">
             {thisMonth && (
               <Link to="?tab=pay" className={`mini-stat ${thisMonth.status === "approved" ? "mini-stat--green" : thisMonth.status === "unpaid" ? "mini-stat--red" : ""}`}>
@@ -370,12 +404,36 @@ export default function Me({ loaderData, actionData }: Route.ComponentProps) {
                   <span className="event-main">
                     <strong>{eventTitle(lang, ev)}</strong>
                     <span className="muted small">{tr.events.types[ev.type]}{ev.time ? ` · ${ev.time}` : ""}{ev.place ? ` · ${ev.place}` : ""}</span>
+                    {ev.duties.length > 0 && <span className="duty-mine">👉 {ev.duties.map((d) => tr.events.dutyNames[d]).join(", ")}</span>}
                   </span>
                 </div>
               </li>
             ))}
           </ul>
         )
+      )}
+
+      {tab === "materials" && (
+        <>
+          <MaterialUpload courses={data.courses} reviewer={false} />
+          <Card>
+            <h2>{tr.materials.mine}</h2>
+            {data.myMaterials.length === 0 ? <p className="muted">—</p> : (
+              <ul className="materials">
+                {data.myMaterials.map((i) => (
+                  <li key={i.id} className="material">
+                    <div className="material-main">
+                      {i.status === "rejected" ? <strong>{i.title}</strong> : <a href={`/materials/${i.id}/file`} target="_blank" rel="noreferrer"><strong>{i.title}</strong></a>}
+                      <span className="muted">{i.course} · {formatBytes(i.fileSize)} · {formatEth(lang, isoToEth(todayIso(i.createdAt)))}</span>
+                    </div>
+                    <span className={`pill pill--${i.status}`}>{tr.materials.status[i.status]}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p><Link to="/materials">{tr.materials.title} →</Link></p>
+          </Card>
+        </>
       )}
 
       {tab === "profile" && <Profile profile={profile} />}

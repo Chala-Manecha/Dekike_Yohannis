@@ -28,6 +28,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     hasPassword: Boolean(await getPasswordHash(db, user.id)),
     telegram: (await telegramIdForUser(db, user.id)) ? (user.telegramUsername ? `@${user.telegramUsername}` : "✓") : null,
     botUsername: env.TELEGRAM_BOT_USERNAME,
+    botNotify: (await db.query.user.findFirst({ where: eq(schema.user.id, user.id), columns: { botNotify: true } }))?.botNotify ?? true,
   };
 }
 
@@ -49,6 +50,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     } catch {
       return { saved: false, interestsSaved: false, fieldErrors: { studentId: "studentIdTaken" as ErrorKey } };
     }
+    return { saved: false, interestsSaved: false, fieldErrors: {} as Record<string, ErrorKey> };
+  }
+  if (form.get("intent") === "botNotify") {
+    await db.update(schema.user).set({ botNotify: form.get("on") === "1" }).where(eq(schema.user.id, user.id));
     return { saved: false, interestsSaved: false, fieldErrors: {} as Record<string, ErrorKey> };
   }
   if (form.get("intent") === "interests") {
@@ -75,7 +80,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
     const key = actionData?.fieldErrors?.[k];
     return key ? (tr.errors[key] as string) : undefined;
   };
-  const { studentId, hasPassword, telegram, botUsername, interests, isMember } = loaderData;
+  const { studentId, hasPassword, telegram, botUsername, interests, isMember, botNotify } = loaderData;
 
   return (
     <section className="page narrow">
@@ -103,6 +108,15 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
           )}
         </dd>
       </dl>
+
+      <h2>{a.notifyTitle}</h2>
+      <Form method="post" className="notify-switch">
+        <input type="hidden" name="intent" value="botNotify" />
+        <input type="hidden" name="on" value={botNotify ? "0" : "1"} />
+        <span className={`pill ${botNotify ? "pill--approved" : "pill--rejected"}`}>{botNotify ? a.notifyOn : a.notifyOff}</span>
+        <button className={`btn btn-sm ${botNotify ? "btn-quiet" : "btn-green"}`} disabled={busy}>{botNotify ? a.turnOff : a.turnOn}</button>
+      </Form>
+      <p className="muted small">{a.notifyHint}</p>
 
       {interests && (
         <>
