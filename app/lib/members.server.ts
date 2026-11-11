@@ -33,5 +33,5 @@ export async function createMember(db: Db, userId: string, m: NewMember, registe
 }
 
 export async function memberForUser(db: Db, userId: string) {
-  return db.query.members.findFirst({ where: eq(schema.members.userId, userId), columns: { id: true, lang: true, status: true } });
+  return db.query.members.findFirst({ where: eq(schema.members.userId, userId) });
 }

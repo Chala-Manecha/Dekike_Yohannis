@@ -9,6 +9,8 @@ import { DICTS, t } from "../lib/i18n";
 import { createMember, memberForUser } from "../lib/members.server";
 import { newRegistrationNotices } from "../lib/notices";
 import { notify, recipientsWithRoles } from "../lib/notices.server";
+import { guestKeyboard, memberKeyboard, menuAction } from "../lib/bot-menu";
+import { botNotifyFor, nextReply, pagesReply, payReply, songsReply, type BotReply } from "../lib/bot-menu.server";
 
 /**
  * Telegram calls this for messages to the bot and button taps (set up once with
@@ -65,9 +67,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     return userId ? memberForUser(db, userId) : undefined;
   }
 
+  const keyboardFor = async (member: { lang: "om" | "am"; userId: string }) => memberKeyboard(member.lang, await botNotifyFor(db, member.userId));
+
   async function beginRegistration(chatId: number, from: TgUser) {
     const member = await existingMember(from.id);
-    if (member) return send(chatId, t(member.lang).botReg.already, openButton(t(member.lang).botReg.openBtn));
+    if (member) return send(chatId, t(member.lang).botReg.already, await keyboardFor(member));
     await db
       .insert(schema.botRegistrations)
       .values({ chatId: String(chatId), step: START.step, data: START.data, updatedAt: Date.now() })
@@ -94,14 +98,15 @@ export async function action({ request, context }: Route.ActionArgs) {
       const error = await createMember(db, userId, result.submit, toEth(new Date()).year);
       await db.delete(schema.botRegistrations).where(eq(schema.botRegistrations.chatId, String(chatId)));
       if (error === "studentIdTaken") return send(chatId, `${tr.errors.studentIdTaken}\n/register`);
-      if (error === "alreadyMember") return send(chatId, tr.botReg.already, openButton(tr.botReg.openBtn));
       const created = await memberForUser(db, userId);
+      if (error === "alreadyMember") return send(chatId, tr.botReg.already, created ? await keyboardFor(created) : openButton(tr.botReg.openBtn));
       if (created) {
         notify(env, ctx, newRegistrationNotices(await recipientsWithRoles(db, ["members_coordinator"]), {
           id: created.id, name: result.submit.fullName, department: result.submit.department, graduate: result.submit.studyYear === null,
         }, site));
       }
-      return send(chatId, result.reply.text, openButton(tr.botReg.openBtn));
+      // The keyboard under the chat replaces the registration buttons from here on
+      return send(chatId, result.reply.text, created ? await keyboardFor(created) : openButton(tr.botReg.openBtn));
     }
 
     await db
@@ -131,13 +136,30 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
     if (cmd?.command === "start") {
       const member = await existingMember(msg.from.id);
-      if (member) return send(chatId, t(member.lang).botReg.welcomeMember, openButton(t(member.lang).botReg.openBtn));
-      return send(chatId, both((d) => d.botReg.intro), {
-        inline_keyboard: [
-          [{ text: `${DICTS.om.botReg.registerBtn} · ${DICTS.am.botReg.registerBtn.replace("📝 ", "")}`, callback_data: "r:start" }],
-          [{ text: `${DICTS.om.botReg.openBtn} · ${DICTS.am.botReg.openBtn.replace("📖 ", "")}`, web_app: { url: site } }],
-        ],
-      });
+      if (member) return send(chatId, t(member.lang).botReg.welcomeMember, await keyboardFor(member));
+      return send(chatId, both((d) => d.botReg.intro), guestKeyboard());
+    }
+
+    // Keyboard buttons (checked before an open registration so they always work)
+    const tapped = cmd ? null : menuAction(msg.text);
+    if (tapped) {
+      const member = await existingMember(msg.from.id);
+      const reply = (r: BotReply) => send(chatId, r.text, r.reply_markup);
+      if (tapped === "register") return beginRegistration(chatId, msg.from);
+      if (!member) {
+        if (tapped === "open") return send(chatId, both((d) => d.botMenu.pagesTitle), openButton(`${DICTS.om.botReg.openBtn} · ${DICTS.am.botReg.openBtn.replace("📖 ", "")}`));
+        return send(chatId, both((d) => d.botReg.intro), guestKeyboard());
+      }
+      const lang = member.lang;
+      if (tapped === "next") return reply(await nextReply(db, member, lang));
+      if (tapped === "songs") return reply(await songsReply(db, lang, site));
+      if (tapped === "pay") return reply(await payReply(db, member, lang, site));
+      if (tapped === "pages" || tapped === "open") return reply(pagesReply(lang, site, true));
+      if (tapped === "notify") {
+        const on = !(await botNotifyFor(db, member.userId));
+        await db.update(schema.user).set({ botNotify: on }).where(eq(schema.user.id, member.userId));
+        return send(chatId, on ? t(lang).botMenu.notifyNowOn : t(lang).botMenu.notifyNowOff, memberKeyboard(lang, on));
+      }
     }
 
     const session = await db.query.botRegistrations.findFirst({ where: eq(schema.botRegistrations.chatId, String(chatId)) });
