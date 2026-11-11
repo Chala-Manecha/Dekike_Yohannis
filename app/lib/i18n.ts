@@ -330,6 +330,12 @@ const am = {
     update: "አዘምን",
     onlyMembers: "አስተያየት መላክ የሚችሉት የጸደቁ አባላት ናቸው።",
   },
+  groupSite: "ድረ ገጽ",
+  groupIntro:
+    "👋 ሰላም! እኔ የቅዱስ ዮሐንስ መጥምቅ ወርሃዊ ዝክር (የአምቦ ዩኒቨርሲቲ ሃጫሉ ሁንዴሳ ካምፓስ CS፣ IT እና EE) ቦት ነኝ።\n\n" +
+    "እኔ፦\n• የዝክሩን ቀንና ለውጦቹን አሳውቃለሁ\n• ወርሃዊ መዋጮን አስታውሳለሁ፤ ክፍያዎን እመዘግባለሁ\n• ኃላፊነቶችንና የሚዘመሩ መዝሙሮችን አሳያለሁ\n\n" +
+    "ለመቀጠል እባክዎ ከታች «ተመዝገብ»ን ተጭነው ይመዝገቡ 👇",
+  groupWelcome: (names: string) => `እንኳን ደህና መጡ፣ ${names}! ለመመዝገብ ከታች «ተመዝገብ»ን ይጫኑ 👇`,
   botMenu: {
     next: "📅 ቀጣይ ዝክር",
     songs: "🎵 መዝሙሮች",
@@ -1007,6 +1013,12 @@ const om: Dict = {
     update: "Haaromsi",
     onlyMembers: "Yaada erguu kan danda'an miseensota mirkanaa'an qofa.",
   },
+  groupSite: "Weebsaayitii",
+  groupIntro:
+    "👋 Akkam! Ani boottii Xoofoo ji'aa Qulqulluu Yohaannis Cuuphaa (CS, IT fi EE, Yuunivarsiitii Amboo, Kampaasii Haacaaluu Hundeessaa) dha.\n\n" +
+    "Ani:\n• guyyaa xoofoo fi jijjiirama isaa isinitti hima\n• gumaacha ji'aa isin yaadachiisa; kaffaltii keessan galmeessa\n• itti gaafatamummaa fi faarfannaa sagantaa isinitti agarsiisa\n\n" +
+    "Itti fufuuf, maaloo «Galmaa'i» tuqaatii galmaa'aa 👇",
+  groupWelcome: (names: string) => `Baga nagaan dhuftan, ${names}! Galmaa'uuf «Galmaa'i» tuqaa 👇`,
   botMenu: {
     next: "📅 Xoofoo itti aanu",
     songs: "🎵 Faarfannaa",

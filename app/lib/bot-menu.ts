@@ -57,3 +57,24 @@ export function menuAction(text: string | undefined): MenuAction | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------- Group posts
+
+const registerUrl = (botUsername: string) => `https://t.me/${botUsername}?start=register`;
+const groupButtons = (botUsername: string, site: string) => ({
+  inline_keyboard: [
+    [{ text: GUEST_REGISTER, url: registerUrl(botUsername) }],
+    [{ text: `🌐 ${DICTS.om.groupSite} · ${DICTS.am.groupSite}`, url: site }],
+  ],
+});
+
+/** "Who I am and why to register", Oromo then Amharic; buttons open the bot or the site. */
+export function groupIntro(botUsername: string, site: string) {
+  return { text: `${DICTS.om.groupIntro}\n\n${DICTS.am.groupIntro}`, reply_markup: groupButtons(botUsername, site) };
+}
+
+/** Short hello for people who just joined the group and aren't registered yet. */
+export function groupWelcome(names: string[], botUsername: string, site: string) {
+  const who = names.join(", ");
+  return { text: `${DICTS.om.groupWelcome(who)}\n${DICTS.am.groupWelcome(who)}`, reply_markup: groupButtons(botUsername, site) };
+}

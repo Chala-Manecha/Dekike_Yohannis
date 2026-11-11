@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GUEST_OPEN, GUEST_REGISTER, guestKeyboard, memberKeyboard, menuAction } from "../app/lib/bot-menu";
+import { GUEST_OPEN, GUEST_REGISTER, groupIntro, groupWelcome, guestKeyboard, memberKeyboard, menuAction } from "../app/lib/bot-menu";
 import { DICTS } from "../app/lib/i18n";
 
 describe("bot keyboard", () => {
@@ -32,5 +32,14 @@ describe("bot keyboard", () => {
     expect(labels("songs")).toEqual(["next", "songs", "pay", "notify", "pages"]);
     // Staff without a member record still get their department buttons
     expect(labels("finance", false)).toEqual(["unpaid", "next", "notify", "pages"]);
+  });
+
+  it("group posts point to registration in the bot", () => {
+    const p = groupIntro("DekikeYohannis_bot", "https://x.dev");
+    expect(p.reply_markup.inline_keyboard[0][0].url).toBe("https://t.me/DekikeYohannis_bot?start=register");
+    expect(p.reply_markup.inline_keyboard[1][0].url).toBe("https://x.dev");
+    expect(p.text).toContain("Galmaa'i");
+    expect(p.text).toContain("ተመዝገብ");
+    expect(groupWelcome(["Abebe", "Chaltu"], "b", "s").text).toContain("Abebe, Chaltu");
   });
 });

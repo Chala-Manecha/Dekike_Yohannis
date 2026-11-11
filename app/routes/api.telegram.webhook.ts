@@ -11,7 +11,8 @@ import { newRegistrationNotices } from "../lib/notices";
 import { notify, recipientsWithRoles } from "../lib/notices.server";
 import { guestKeyboard, memberKeyboard, menuAction } from "../lib/bot-menu";
 import { attendanceReply, confirmMarkup, eventDetailsReply, nextReply, pagesReply, payReply, remindUnpaid, songsReply, unpaidReply, type BotReply } from "../lib/bot-menu.server";
-import { staffButtons } from "../lib/bot-menu";
+import { groupIntro, groupWelcome, staffButtons } from "../lib/bot-menu";
+import { hasDashboard } from "../lib/permissions";
 import { releaseEvent } from "../lib/events.server";
 import { enqueue, drainOutbox } from "../lib/notify.server";
 import { DEFAULT_LANG } from "../lib/lang";
@@ -30,6 +31,7 @@ type TgMessage = {
   contact?: { phone_number: string; user_id?: number };
   chat: { id: number; type: string };
   from?: TgUser;
+  new_chat_members?: TgUser[];
 };
 type TgUpdate = {
   message?: TgMessage;
@@ -145,7 +147,27 @@ export async function action({ request, context }: Route.ActionArgs) {
     const cmd = parseCommand(msg.text);
     // In a group: "/chatid" prints the id to put in TELEGRAM_GROUP_CHAT_ID
     if (cmd?.command === "chatid") return send(chatId, `chat id: ${chatId}`);
-    if (msg.chat.type !== "private") return ok();
+    if (msg.chat.type !== "private") {
+      const post = (p: { text: string; reply_markup: unknown }) => send(chatId, p.text, p.reply_markup);
+      // Introduce the bot when it is added to a group
+      const joined = msg.new_chat_members ?? [];
+      if (joined.some((u) => u.is_bot && u.username?.toLowerCase() === env.TELEGRAM_BOT_USERNAME.toLowerCase())) {
+        return post(groupIntro(env.TELEGRAM_BOT_USERNAME, site));
+      }
+      // Greet people who just joined and aren't registered yet
+      const humans = joined.filter((u) => !u.is_bot);
+      if (humans.length) {
+        const newcomers = [];
+        for (const u of humans) if (!(await existingMember(u.id))) newcomers.push(u.first_name || u.username || "");
+        return newcomers.length ? post(groupWelcome(newcomers.filter(Boolean), env.TELEGRAM_BOT_USERNAME, site)) : ok();
+      }
+      // "/intro" in the group: only department heads, so nobody can spam it
+      if (cmd?.command === "intro") {
+        const w = await who(msg.from.id);
+        return w && hasDashboard(w.role) ? post(groupIntro(env.TELEGRAM_BOT_USERNAME, site)) : ok();
+      }
+      return ok();
+    }
 
     if (cmd?.command === "register" || (cmd?.command === "start" && cmd.payload === "register")) return beginRegistration(chatId, msg.from);
     if (cmd?.command === "cancel") {
